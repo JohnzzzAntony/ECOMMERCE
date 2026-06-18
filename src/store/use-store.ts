@@ -30,6 +30,7 @@ export type ViewKey =
   | 'profile'
   | 'admin'
   | 'compare'
+  | 'track-order'
 
 export interface NavParams {
   slug?: string

@@ -36,6 +36,8 @@ export function CartView() {
   const [notes, setNotes] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [promoCode, setPromoCode] = useState('')
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; percent: number } | null>(null)
   const [form, setForm] = useState({
     customerName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '',
     email: user?.email || '',
@@ -45,11 +47,41 @@ export function CartView() {
   })
 
   // Compute subtotal (regular) vs sale total to derive discount
-  const { subtotal, discount, total } = useMemo(() => {
+  const { subtotal, discount, total, promoDiscount } = useMemo(() => {
     const sub = cart.reduce((s, i) => s + i.product.regularPrice * i.quantity, 0)
     const tot = cartTotal()
-    return { subtotal: sub, discount: Math.max(0, sub - tot), total: tot }
-  }, [cart, cartTotal])
+    const promoDisc = appliedPromo ? tot * (appliedPromo.percent / 100) : 0
+    return { subtotal: sub, discount: Math.max(0, sub - tot), total: tot - promoDisc, promoDiscount: promoDisc }
+  }, [cart, cartTotal, appliedPromo])
+
+  // Promo code validation
+  const VALID_PROMOS: Record<string, number> = {
+    'JKR10': 10,
+    'MEDICAL20': 20,
+    'WELCOME15': 15,
+    'DUBAI2026': 25,
+  }
+
+  const applyPromo = () => {
+    const code = promoCode.trim().toUpperCase()
+    if (!code) {
+      toast.error('Please enter a promo code')
+      return
+    }
+    if (VALID_PROMOS[code]) {
+      setAppliedPromo({ code, percent: VALID_PROMOS[code] })
+      toast.success(`Promo code applied: ${code}% off!`)
+    } else {
+      toast.error('Invalid promo code')
+      setAppliedPromo(null)
+    }
+  }
+
+  const removePromo = () => {
+    setAppliedPromo(null)
+    setPromoCode('')
+    toast.success('Promo code removed')
+  }
 
   const openEnquiryDialog = () => {
     if (cart.length === 0) {
@@ -315,10 +347,42 @@ export function CartView() {
                 </div>
                 {discount > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-brand-gold">Discount</span>
+                    <span className="text-brand-gold">Sale Discount</span>
                     <span className="font-medium text-brand-gold">− {formatAED(discount)}</span>
                   </div>
                 )}
+
+                {/* Promo code section */}
+                {!appliedPromo ? (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground">Have a promo code?</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={promoCode}
+                        onChange={(e) => setPromoCode(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && applyPromo()}
+                        placeholder="Enter code"
+                        className="text-sm uppercase"
+                      />
+                      <Button onClick={applyPromo} variant="outline" size="sm" className="shrink-0 border-brand-teal text-brand-teal hover:bg-brand-teal hover:text-white">
+                        Apply
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Try: JKR10, MEDICAL20, WELCOME15, DUBAI2026</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-600" />
+                      <div>
+                        <div className="text-xs font-semibold text-emerald-700">{appliedPromo.code} ({appliedPromo.percent}% off)</div>
+                        <div className="text-[10px] text-emerald-600">− {formatAED(promoDiscount)}</div>
+                      </div>
+                    </div>
+                    <button onClick={removePromo} className="text-xs text-red-500 hover:underline">Remove</button>
+                  </div>
+                )}
+
                 <Separator />
                 <div className="flex justify-between">
                   <span className="text-base font-semibold text-brand-ink">Total</span>

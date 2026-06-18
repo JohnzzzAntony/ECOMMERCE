@@ -1224,7 +1224,21 @@ function OrdersEnquiriesSection() {
                 )}
                 <div className="flex items-center gap-3 rounded-lg border border-brand-teal/30 bg-brand-teal/5 p-3">
                   <Label className="text-sm font-medium">Update status:</Label>
-                  <Select defaultValue={o.orderStatus} onValueChange={(v) => toast.success(`Order status set to: ${v}`)}>
+                  <Select defaultValue={o.orderStatus} onValueChange={async (v) => {
+                    try {
+                      await fetch('/api/admin/orders', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: o.id, orderStatus: v }),
+                      })
+                      toast.success(`Order status updated to: ${v}`)
+                      // Update local state
+                      setOrders((prev) => prev.map((ord) => ord.id === o.id ? { ...ord, orderStatus: v } : ord))
+                      setDetail({ ...o, orderStatus: v } as Order)
+                    } catch {
+                      toast.error('Failed to update order status')
+                    }
+                  }}>
                     <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="pending">Pending</SelectItem>
@@ -1236,8 +1250,8 @@ function OrdersEnquiriesSection() {
                   </Select>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => toast.success('Order updated')}>
-                    <Save className="size-4" /> Save Changes
+                  <Button variant="outline" onClick={() => { setDetail(null); setDetailType(null) }}>
+                    Close
                   </Button>
                 </DialogFooter>
               </>
@@ -1302,7 +1316,20 @@ function OrdersEnquiriesSection() {
                 )}
                 <div className="flex items-center gap-3 rounded-lg border border-brand-cyan/30 bg-brand-cyan/5 p-3">
                   <Label className="text-sm font-medium">Update status:</Label>
-                  <Select defaultValue={e.status} onValueChange={(v) => toast.success(`Enquiry status set to: ${v}`)}>
+                  <Select defaultValue={e.status} onValueChange={async (v) => {
+                    try {
+                      await fetch('/api/admin/enquiries', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: e.id, status: v }),
+                      })
+                      toast.success(`Enquiry status updated to: ${v}`)
+                      setEnquiries((prev) => prev.map((enq) => enq.id === e.id ? { ...enq, status: v } : enq))
+                      setDetail({ ...e, status: v } as Enquiry)
+                    } catch {
+                      toast.error('Failed to update enquiry status')
+                    }
+                  }}>
                     <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="new">New</SelectItem>

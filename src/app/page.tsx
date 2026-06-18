@@ -30,6 +30,7 @@ import { LoginView } from '@/components/views/login-view'
 import { RegisterView } from '@/components/views/register-view'
 import { ProfileView } from '@/components/views/profile-view'
 import { AdminView } from '@/components/views/admin-view'
+import { TrackOrderView } from '@/components/views/track-order-view'
 
 export default function Home() {
   const { view, params, lang, settings, setSettings, compareList } = useStore()
@@ -70,6 +71,7 @@ export default function Home() {
       case 'register': return <RegisterView />
       case 'profile': return <ProfileView />
       case 'admin': return <AdminView />
+      case 'track-order': return <TrackOrderView />
       default: return <HomeView />
     }
   }

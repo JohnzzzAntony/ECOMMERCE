@@ -100,6 +100,7 @@ export function Footer() {
               <li><button onClick={() => navigate('contact')} className="hover:text-brand-cyan transition-colors">Contact Us</button></li>
               <li><button onClick={() => navigate('store-locations')} className="hover:text-brand-cyan transition-colors">Store Locations</button></li>
               <li><button onClick={() => navigate('shipping-info')} className="hover:text-brand-cyan transition-colors">Shipping Info</button></li>
+              <li><button onClick={() => navigate('track-order')} className="hover:text-brand-cyan transition-colors">Track Order</button></li>
               <li><button onClick={() => navigate('faq')} className="hover:text-brand-cyan transition-colors">FAQ</button></li>
               <li><button onClick={() => navigate('terms')} className="hover:text-brand-cyan transition-colors">Terms & Conditions</button></li>
               <li><button onClick={() => navigate('privacy')} className="hover:text-brand-cyan transition-colors">Privacy Policy</button></li>
