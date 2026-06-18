@@ -1235,10 +1235,11 @@ function OrdersEnquiriesSection() {
   const [enqFilter, setEnqFilter] = useState('all')
   const [detail, setDetail] = useState<Order | Enquiry | null>(null)
   const [detailType, setDetailType] = useState<'order' | 'enquiry' | null>(null)
+  const [responseText, setResponseText] = useState('')
+  const [sendingResponse, setSendingResponse] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     Promise.all([
       fetch('/api/orders').then((r) => r.json()).catch(() => []),
@@ -1591,9 +1592,66 @@ function OrdersEnquiriesSection() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Admin Response Section */}
+                <div className="rounded-lg border border-brand-teal/30 bg-brand-teal/5 p-3">
+                  <Label className="text-sm font-medium">Send Response to Customer</Label>
+                  <p className="mt-0.5 text-xs text-muted-foreground">This will be emailed to {e.email} and appended to the enquiry.</p>
+                  <Textarea
+                    value={responseText}
+                    onChange={(ev) => setResponseText(ev.target.value)}
+                    rows={3}
+                    placeholder="Type your response here... e.g. Thank you for your enquiry. We have the items in stock and can offer a special price of..."
+                    className="mt-2"
+                  />
+                  <div className="mt-2 flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setResponseText('')}
+                      disabled={!responseText || sendingResponse}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-brand-teal hover:bg-brand-teal-dark"
+                      disabled={!responseText.trim() || sendingResponse}
+                      onClick={async () => {
+                        setSendingResponse(true)
+                        try {
+                          const res = await fetch('/api/admin/enquiries/respond', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: e.id, status: 'contacted', response: responseText.trim() }),
+                          })
+                          if (!res.ok) throw new Error('Failed')
+                          const data = await res.json()
+                          toast.success('Response sent to customer!')
+                          setEnquiries((prev) => prev.map((enq) => enq.id === e.id ? { ...enq, status: 'contacted', message: data.enquiry.message } : enq))
+                          setDetail({ ...e, status: 'contacted', message: data.enquiry.message } as Enquiry)
+                          setResponseText('')
+                          // Simulate email notification
+                          useStore.getState().addNotification({
+                            type: 'enquiry_response',
+                            title: `Response sent to ${e.customerName}`,
+                            message: `Your response has been emailed to ${e.email}.`,
+                          })
+                        } catch {
+                          toast.error('Failed to send response')
+                        } finally {
+                          setSendingResponse(false)
+                        }
+                      }}
+                    >
+                      {sendingResponse ? 'Sending...' : 'Send Response'}
+                    </Button>
+                  </div>
+                </div>
+
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => toast.success('Enquiry updated')}>
-                    <Save className="size-4" /> Save Changes
+                  <Button variant="outline" onClick={() => { setDetail(null); setDetailType(null); setResponseText('') }}>
+                    Close
                   </Button>
                 </DialogFooter>
               </>

@@ -33,7 +33,7 @@ import { AdminView } from '@/components/views/admin-view'
 import { TrackOrderView } from '@/components/views/track-order-view'
 
 export default function Home() {
-  const { view, params, lang, settings, setSettings, compareList } = useStore()
+  const { view, params, lang, settings, setSettings, compareList, toggleWishlist, navigate } = useStore()
 
   useEffect(() => {
     applyLangDir(lang)
@@ -44,6 +44,37 @@ export default function Home() {
       fetch('/api/settings').then((r) => r.json()).then(setSettings).catch(() => {})
     }
   }, [settings, setSettings])
+
+  // Import wishlist from shared link (?wishlist=slug1,slug2,...)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    const wishlistParam = url.searchParams.get('wishlist')
+    if (wishlistParam) {
+      const slugs = wishlistParam.split(',').filter(Boolean)
+      // Fetch products by slug and add to wishlist
+      fetch(`/api/products?limit=200`)
+        .then((r) => r.json())
+        .then(({ products }) => {
+          const matched = products.filter((p: any) => slugs.includes(p.slug))
+          matched.forEach((p: any) => {
+            if (!useStore.getState().wishlist.includes(p.id)) {
+              toggleWishlist(p.id)
+            }
+          })
+          // Clean the URL
+          url.searchParams.delete('wishlist')
+          window.history.replaceState({}, '', url.toString())
+          if (matched.length > 0) {
+            import('sonner').then(({ toast }) => {
+              toast.success(`${matched.length} product(s) imported to your wishlist!`)
+            })
+            navigate('wishlist')
+          }
+        })
+        .catch(() => {})
+    }
+  }, [toggleWishlist, navigate])
 
   const renderView = () => {
     switch (view) {
