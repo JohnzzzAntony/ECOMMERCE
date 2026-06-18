@@ -664,3 +664,53 @@ Next phase recommendations:
 - Could implement actual RTL layout testing for Arabic mode.
 - Could add notification preferences/settings.
 - Could add a search results page with enhanced facets.
+
+---
+Task ID: 10
+Agent: Cron Review Agent (Round 8)
+Task: QA assessment, loyalty points system, bug fix in profile loyalty prop.
+
+Work Log:
+- Reviewed worklog.md — project was stable from Round 7 (21 views, 30+ API routes, 61 products, 12 blog posts, full admin CRUD, notifications, lint-clean).
+- Started dev server and performed QA with agent-browser:
+  - Home page: Best Sellers ✅, New Arrivals ✅, Countdown ✅, Notification bell ✅
+  - Product detail: zoom ✅, reviews ✅, related products ✅
+  - Admin dashboard: Welcome back ✅
+  - No console errors, HTTP 200.
+
+- Added loyalty points system:
+  - Extended Zustand store (src/store/use-store.ts) with loyaltyPoints (number), addLoyaltyPoints(amount), spendLoyaltyPoints(amount) → boolean. Persisted to localStorage.
+  - Earning: 1 point per AED spent on enquiry submission. Points auto-awarded after successful enquiry submit + notification added.
+  - Redemption: 100 points = 10 AED discount, max 50% of order total. Toggle redemption in cart.
+  - Cart (src/components/views/cart-view.tsx): loyalty redemption card in order summary (shows when ≥100 points), gold gradient styling, Redeem button toggles discount, loyalty discount line item, total recalculates. Points spent on enquiry submit.
+  - Profile (src/components/views/profile-view.tsx): loyalty points card with gold star icon, points balance, worth in AED, earning rate, redemption rate, max per order.
+  - Notification on points earned: "+N loyalty points earned!" with explanation.
+
+- Fixed bug: loyaltyPoints not defined in ProfileContent component.
+  - ProfileContent is a separate inner component that receives props.
+  - Added loyaltyPoints to the props interface and function signature.
+  - Updated the call site to pass loyaltyPoints={loyaltyPoints}.
+  - VLM-verified: profile now shows "750" points, "Worth 70 AED", "Earn 1 pt per AED spent", "100 pts = 10 AED", "Max 50% per order".
+
+- Verification results:
+  - Lint: 0 errors, 0 warnings
+  - Cart loyalty: redemption card shows ✅, points balance ✅, redeem button ✅
+  - Profile loyalty: gold star icon ✅, 750 points ✅, worth 70 AED ✅ (VLM-verified)
+  - No console errors, HTTP 200
+
+Stage Summary:
+- All QA passed — 1 bug found and fixed (loyaltyPoints prop missing in ProfileContent).
+- 1 major new feature added: loyalty points system (earn + redeem + display in cart and profile).
+- Loyalty: 1 pt/AED earned, 100 pts = 10 AED redeem, max 50% per order, persisted to localStorage, notifications on earn.
+- Lint: 0 errors, 0 warnings.
+- All features browser-verified with no console errors.
+- Total: 61 products, 12 blog posts, 21 SPA views, 30+ API routes.
+
+Next phase recommendations:
+- Could add image upload for products/blog (currently uses placeholder).
+- Could add product recommendations based on browsing history (recently viewed exists, could add "You may also like" on product detail).
+- Could implement actual RTL layout testing for Arabic mode.
+- Could add notification preferences/settings.
+- Could add a search results page with enhanced facets.
+- Could add admin dashboard sales chart (revenue over time).
+- Could add product reviews helpfulness voting.

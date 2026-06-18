@@ -117,6 +117,11 @@ interface AppState {
   markNotificationRead: (id: string) => void
   clearNotifications: () => void
   unreadCount: () => number
+
+  // Loyalty points (earn 1 point per AED spent, 100 points = 10 AED discount)
+  loyaltyPoints: number
+  addLoyaltyPoints: (amount: number) => void
+  spendLoyaltyPoints: (amount: number) => boolean
 }
 
 export const useStore = create<AppState>()(
@@ -240,6 +245,16 @@ export const useStore = create<AppState>()(
         })),
       clearNotifications: () => set({ notifications: [] }),
       unreadCount: () => get().notifications.filter((n) => !n.read).length,
+
+      loyaltyPoints: 0,
+      addLoyaltyPoints: (amount) =>
+        set((s) => ({ loyaltyPoints: s.loyaltyPoints + Math.floor(amount) })),
+      spendLoyaltyPoints: (amount) => {
+        const current = get().loyaltyPoints
+        if (current < amount) return false
+        set({ loyaltyPoints: current - amount })
+        return true
+      },
     }),
     {
       name: 'jkr-store',
@@ -254,6 +269,7 @@ export const useStore = create<AppState>()(
         compareList: s.compareList,
         recentSearches: s.recentSearches,
         notifications: s.notifications,
+        loyaltyPoints: s.loyaltyPoints,
       }),
     }
   )

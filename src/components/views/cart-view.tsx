@@ -31,6 +31,10 @@ export function CartView() {
     cartTotal,
     navigate,
     user,
+    loyaltyPoints,
+    spendLoyaltyPoints,
+    addLoyaltyPoints,
+    addNotification,
   } = useStore()
 
   const [notes, setNotes] = useState('')
@@ -38,6 +42,7 @@ export function CartView() {
   const [submitting, setSubmitting] = useState(false)
   const [promoCode, setPromoCode] = useState('')
   const [appliedPromo, setAppliedPromo] = useState<{ code: string; percent: number } | null>(null)
+  const [loyaltyRedeemed, setLoyaltyRedeemed] = useState(false)
   const [form, setForm] = useState({
     customerName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '',
     email: user?.email || '',
@@ -47,12 +52,29 @@ export function CartView() {
   })
 
   // Compute subtotal (regular) vs sale total to derive discount
-  const { subtotal, discount, total, promoDiscount } = useMemo(() => {
+  const { subtotal, discount, total, promoDiscount, loyaltyDiscount } = useMemo(() => {
     const sub = cart.reduce((s, i) => s + i.product.regularPrice * i.quantity, 0)
     const tot = cartTotal()
     const promoDisc = appliedPromo ? tot * (appliedPromo.percent / 100) : 0
-    return { subtotal: sub, discount: Math.max(0, sub - tot), total: tot - promoDisc, promoDiscount: promoDisc }
-  }, [cart, cartTotal, appliedPromo])
+    // Loyalty: 100 points = 10 AED, max 50% of total
+    const maxLoyaltyDisc = (tot - promoDisc) * 0.5
+    const loyaltyDisc = loyaltyRedeemed ? Math.min(Math.floor(loyaltyPoints / 100) * 10, maxLoyaltyDisc) : 0
+    return { subtotal: sub, discount: Math.max(0, sub - tot), total: tot - promoDisc - loyaltyDisc, promoDiscount: promoDisc, loyaltyDiscount: loyaltyDisc }
+  }, [cart, cartTotal, appliedPromo, loyaltyRedeemed, loyaltyPoints])
+
+  const toggleLoyalty = () => {
+    if (loyaltyRedeemed) {
+      setLoyaltyRedeemed(false)
+      toast.success('Loyalty points redemption removed')
+    } else {
+      if (loyaltyPoints < 100) {
+        toast.error('You need at least 100 points to redeem')
+        return
+      }
+      setLoyaltyRedeemed(true)
+      toast.success(`${Math.floor(loyaltyPoints / 100) * 10} AED loyalty discount applied!`)
+    }
+  }
 
   // Promo code validation
   const VALID_PROMOS: Record<string, number> = {
@@ -122,8 +144,24 @@ export function CartView() {
         items,
       })
       toast.success('Enquiry submitted! Our team will contact you shortly.')
+      // Award loyalty points (1 point per AED spent)
+      const earnedPoints = Math.floor(total)
+      if (earnedPoints > 0) {
+        addLoyaltyPoints(earnedPoints)
+        addNotification({
+          type: 'loyalty',
+          title: `+${earnedPoints} loyalty points earned!`,
+          message: `You earned ${earnedPoints} points for submitting an enquiry. Redeem them on your next order (100 points = 10 AED).`,
+        })
+      }
+      // Spend loyalty points if redeemed
+      if (loyaltyRedeemed && loyaltyDiscount > 0) {
+        const pointsToSpend = Math.floor(loyaltyDiscount / 10) * 100
+        spendLoyaltyPoints(pointsToSpend)
+      }
       clearCart()
       setNotes('')
+      setLoyaltyRedeemed(false)
       setDialogOpen(false)
       navigate('home')
     } catch (err: any) {
@@ -380,6 +418,37 @@ export function CartView() {
                       </div>
                     </div>
                     <button onClick={removePromo} className="text-xs text-red-500 hover:underline">Remove</button>
+                  </div>
+                )}
+
+                {/* Loyalty points redemption */}
+                {loyaltyPoints >= 100 && (
+                  <div className="rounded-lg border border-brand-gold/30 bg-gradient-to-r from-brand-gold/10 to-transparent p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-gold text-xs font-bold text-white">★</span>
+                        <div>
+                          <div className="text-xs font-semibold text-brand-ink">Loyalty Points</div>
+                          <div className="text-[10px] text-muted-foreground">{loyaltyPoints} points available</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={toggleLoyalty}
+                        className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                          loyaltyRedeemed
+                            ? 'bg-brand-gold text-white hover:bg-amber-600'
+                            : 'border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-white'
+                        }`}
+                      >
+                        {loyaltyRedeemed ? `− ${formatAED(loyaltyDiscount)} ✓` : `Redeem ${formatAED(Math.floor(loyaltyPoints / 100) * 10)}`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {loyaltyRedeemed && loyaltyDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-brand-gold">Loyalty Discount</span>
+                    <span className="font-medium text-brand-gold">− {formatAED(loyaltyDiscount)}</span>
                   </div>
                 )}
 

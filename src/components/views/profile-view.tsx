@@ -41,7 +41,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function ProfileView() {
-  const { user, setUser, navigate } = useStore()
+  const { user, setUser, navigate, loyaltyPoints } = useStore()
 
   if (!user) {
     return (
@@ -67,17 +67,19 @@ export function ProfileView() {
     )
   }
 
-  return <ProfileContent user={user} setUser={setUser} navigate={navigate} />
+  return <ProfileContent user={user} setUser={setUser} navigate={navigate} loyaltyPoints={loyaltyPoints} />
 }
 
 function ProfileContent({
   user,
   setUser,
   navigate,
+  loyaltyPoints,
 }: {
   user: NonNullable<ReturnType<typeof useStore.getState>['user']>
   setUser: (u: any) => void
   navigate: ReturnType<typeof useStore.getState>['navigate']
+  loyaltyPoints: number
 }) {
   const [profile, setProfile] = useState({
     firstName: user.firstName || '',
@@ -191,6 +193,31 @@ function ProfileContent({
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Loyalty Points Card */}
+      <Card className="mb-6 overflow-hidden border-brand-gold/30">
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between bg-gradient-to-r from-brand-gold/10 via-brand-gold/5 to-transparent p-5">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-brand-gold to-amber-600 text-2xl font-bold text-white shadow-lg">
+                ★
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Loyalty Points</div>
+                <div className="text-3xl font-bold text-brand-ink">{loyaltyPoints.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">
+                  Worth {formatAED(Math.floor(loyaltyPoints / 100) * 10)} · Earn 1 pt per AED spent
+                </div>
+              </div>
+            </div>
+            <div className="hidden text-right sm:block">
+              <div className="text-xs text-muted-foreground">Redemption Rate</div>
+              <div className="text-sm font-semibold text-brand-gold">100 pts = 10 AED</div>
+              <div className="text-[10px] text-muted-foreground">Max 50% per order</div>
             </div>
           </div>
         </CardContent>
