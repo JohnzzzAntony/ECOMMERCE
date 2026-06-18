@@ -101,6 +101,11 @@ export function ProductCard({ product, variant = 'default' }: ProductCardProps) 
               NEW
             </span>
           )}
+          {product.inStock && product.stockQty > 0 && product.stockQty <= 5 && (
+            <span className="rounded-md bg-orange-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+              LOW STOCK
+            </span>
+          )}
           {!product.inStock && (
             <span className="rounded-md bg-gray-600 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
               OUT OF STOCK

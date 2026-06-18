@@ -1633,13 +1633,29 @@ function UsersSection() {
 function BlogSection() {
   const [posts, setPosts] = useState<BlogPost[]>([])
   const [loading, setLoading] = useState(true)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
-  useEffect(() => {
+  const fetchPosts = () => {
     api.blog()
       .then(setPosts)
       .catch(() => toast.error('Failed to load blog posts'))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchPosts()
   }, [])
+
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Delete "${title}"?`)) return
+    try {
+      await fetch(`/api/admin/blog?id=${id}`, { method: 'DELETE' })
+      toast.success('Post deleted')
+      fetchPosts()
+    } catch {
+      toast.error('Failed to delete post')
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -1648,7 +1664,7 @@ function BlogSection() {
           <h2 className="text-xl font-bold text-brand-ink">Blog</h2>
           <p className="text-sm text-muted-foreground">{posts.length} published posts</p>
         </div>
-        <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={() => toast.info('New blog post editor would open here')}>
+        <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={() => setShowCreateModal(true)}>
           <Plus className="size-4" /> New Post
         </Button>
       </div>
@@ -1702,7 +1718,7 @@ function BlogSection() {
                       <Button variant="ghost" size="icon" className="size-8" onClick={() => toast.info(`Edit ${p.title}`)}>
                         <Pencil className="size-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="size-8 text-red-500" onClick={() => toast.info(`Delete ${p.title}`)}>
+                      <Button variant="ghost" size="icon" className="size-8 text-red-500" onClick={() => handleDelete(p.id, p.title)}>
                         <Trash2 className="size-4" />
                       </Button>
                     </div>
@@ -1713,7 +1729,88 @@ function BlogSection() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Create Blog Post Modal */}
+      <CreateBlogPostModal open={showCreateModal} onOpenChange={setShowCreateModal} onCreated={fetchPosts} />
     </div>
+  )
+}
+
+// ─── Create Blog Post Modal ───────────────────────────────────────────────
+function CreateBlogPostModal({ open, onOpenChange, onCreated }: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onCreated: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ title: '', excerpt: '', content: '', category: 'General', authorName: 'JKR Editorial' })
+
+  const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }))
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.content) {
+      toast.error('Title and content are required')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/blog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      if (!res.ok) throw new Error('Failed')
+      toast.success('Blog post created!')
+      onOpenChange(false)
+      setForm({ title: '', excerpt: '', content: '', category: 'General', authorName: 'JKR Editorial' })
+      onCreated()
+    } catch {
+      toast.error('Failed to create post')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create Blog Post</DialogTitle>
+          <DialogDescription>Publish a new blog article.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2">
+          <div className="grid gap-2">
+            <Label>Title <span className="text-red-500">*</span></Label>
+            <Input value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Post title" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Category</Label>
+              <Input value={form.category} onChange={(e) => set('category', e.target.value)} placeholder="e.g. Buying Guides" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Author</Label>
+              <Input value={form.authorName} onChange={(e) => set('authorName', e.target.value)} />
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label>Excerpt</Label>
+            <Input value={form.excerpt} onChange={(e) => set('excerpt', e.target.value)} placeholder="Brief summary" />
+          </div>
+          <div className="grid gap-2">
+            <Label>Content <span className="text-red-500">*</span></Label>
+            <Textarea value={form.content} onChange={(e) => set('content', e.target.value)} rows={6} placeholder="Write the full article content here..." />
+            <p className="text-xs text-muted-foreground">Use ## for headings, blank lines for paragraphs</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={handleSubmit} disabled={saving}>
+            {saving ? 'Publishing...' : 'Publish Post'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

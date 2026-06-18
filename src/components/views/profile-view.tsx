@@ -93,12 +93,10 @@ function ProfileContent({
   const loadOrders = async () => {
     setOrdersLoading(true)
     try {
-      const res = await fetch('/api/orders')
+      const res = await fetch(`/api/orders/by-email?email=${encodeURIComponent(user.email)}`)
       if (res.ok) {
         const data = await res.json()
-        // Filter to this user's orders by email
-        const myOrders = (data as Order[]).filter((o) => o.email === user.email)
-        setOrders(myOrders)
+        setOrders(data.orders || [])
       }
     } catch {
       toast.error('Failed to load orders')
@@ -375,6 +373,7 @@ function ProfileContent({
                           <TableHead>Total</TableHead>
                           <TableHead>Payment</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -395,6 +394,16 @@ function ProfileContent({
                             </TableCell>
                             <TableCell>
                               <StatusBadge status={o.orderStatus} />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 border-brand-teal/40 text-brand-teal hover:bg-brand-teal hover:text-white"
+                                onClick={() => navigate('track-order', {})}
+                              >
+                                Track
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -420,8 +429,15 @@ function ProfileContent({
                         </div>
                         <Separator className="my-2" />
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">Total</span>
                           <span className="font-bold text-brand-ink">{formatAED(o.total)}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 border-brand-teal/40 text-brand-teal hover:bg-brand-teal hover:text-white"
+                            onClick={() => navigate('track-order', {})}
+                          >
+                            Track Order
+                          </Button>
                         </div>
                       </div>
                     ))}
