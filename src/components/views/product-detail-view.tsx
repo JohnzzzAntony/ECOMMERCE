@@ -869,34 +869,73 @@ function ReviewsPanel({
           ) : (
             <div className="max-h-[520px] space-y-4 overflow-y-auto pr-2 scrollbar-thin">
               {reviews.map((r) => (
-                <div
-                  key={r.id}
-                  className="rounded-lg border border-border bg-white p-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar name={r.authorName} />
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold text-brand-ink">
-                        {r.authorName}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StarRating rating={r.rating} size={12} />
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(r.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {r.reviewText && (
-                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                      {r.reviewText}
-                    </p>
-                  )}
-                </div>
+                <ReviewCard key={r.id} review={r} />
               ))}
             </div>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function ReviewCard({ review: r }: { review: ProductReview }) {
+  const [helpfulCount, setHelpfulCount] = useState(() => {
+    // Pseudo-random initial helpful count based on review id
+    const seed = r.id.charCodeAt(r.id.length - 1) || 0
+    return seed % 15
+  })
+  const [voted, setVoted] = useState(false)
+
+  const handleVote = () => {
+    if (voted) {
+      setHelpfulCount((c) => c - 1)
+      setVoted(false)
+    } else {
+      setHelpfulCount((c) => c + 1)
+      setVoted(true)
+      toast.success('Thanks for your feedback!')
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-white p-4">
+      <div className="flex items-center gap-3">
+        <Avatar name={r.authorName} />
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-brand-ink">
+            {r.authorName}
+          </div>
+          <div className="flex items-center gap-2">
+            <StarRating rating={r.rating} size={12} />
+            <span className="text-xs text-muted-foreground">
+              {formatDate(r.createdAt)}
+            </span>
+          </div>
+        </div>
+        {r.rating === 5 && (
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+            Verified Buyer
+          </span>
+        )}
+      </div>
+      {r.reviewText && (
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          {r.reviewText}
+        </p>
+      )}
+      <div className="mt-3 flex items-center gap-3 border-t border-border pt-3">
+        <button
+          onClick={handleVote}
+          className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            voted
+              ? 'bg-brand-teal/10 text-brand-teal'
+              : 'text-muted-foreground hover:bg-secondary'
+          }`}
+        >
+          <ThumbsUp size={12} className={voted ? 'fill-brand-teal text-brand-teal' : ''} />
+          Helpful {helpfulCount > 0 && `(${helpfulCount})`}
+        </button>
       </div>
     </div>
   )

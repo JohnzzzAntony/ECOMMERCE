@@ -39,7 +39,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Search, TrendingUp, DollarSign,
   LogOut, Menu, ExternalLink, Pencil, Trash2, Eye, AlertTriangle,
   Boxes, UserCircle, Download, Save, Newspaper, Home, CheckCircle2,
-  Activity, Tag, MessageSquare, Sparkles,
+  Activity, Tag, MessageSquare, Sparkles, Award,
 } from 'lucide-react'
 
 // recharts
@@ -331,6 +331,10 @@ function StatCard({
 function DashboardSection() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [analytics, setAnalytics] = useState<{
+    revenueByMonth: { label: string; revenue: number; orders: number }[]
+    topProducts: { name: string; count: number; qty: number }[]
+  } | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -338,6 +342,11 @@ function DashboardSection() {
       .then((d) => { if (mounted) setData(d) })
       .catch(() => toast.error('Failed to load dashboard data'))
       .finally(() => { if (mounted) setLoading(false) })
+    // Fetch analytics (revenue chart + top products)
+    fetch('/api/admin/analytics')
+      .then((r) => r.json())
+      .then((a) => { if (mounted) setAnalytics(a) })
+      .catch(() => {})
     return () => { mounted = false }
   }, [])
 
@@ -489,6 +498,86 @@ function DashboardSection() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Revenue Chart + Top Products */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="size-4 text-brand-teal" /> Revenue Overview
+            </CardTitle>
+            <CardDescription>Last 7 months performance</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analytics && analytics.revenueByMonth.length > 0 ? (
+              <>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analytics.revenueByMonth} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#0D6B8C" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#00B4D8" stopOpacity={0.6} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#64748B' }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(13, 107, 140, 0.05)' }}
+                        contentStyle={{ borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 12 }}
+                        formatter={(v: any) => [formatAED(v), 'Revenue']}
+                      />
+                      <Bar dataKey="revenue" fill="url(#revenueGradient)" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Total: {formatAED(analytics.revenueByMonth.reduce((s, m) => s + m.revenue, 0))}</span>
+                  <span>{analytics.revenueByMonth.reduce((s, m) => s + m.orders, 0)} orders</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex h-64 items-center justify-center">
+                <Skeleton className="h-full w-full" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Award className="size-4 text-brand-gold" /> Top Products
+            </CardTitle>
+            <CardDescription>Best sellers by order frequency</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analytics && analytics.topProducts.length > 0 ? (
+              <ul className="space-y-3">
+                {analytics.topProducts.map((p, i) => (
+                  <li key={p.name} className="flex items-center gap-3">
+                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${
+                      i === 0 ? 'bg-brand-gold' : i === 1 ? 'bg-slate-400' : i === 2 ? 'bg-amber-700' : 'bg-secondary text-muted-foreground'
+                    }`}>
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-brand-ink">{p.name}</div>
+                      <div className="text-xs text-muted-foreground">{p.qty} units sold</div>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0">{p.count}×</Badge>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                No sales data yet
+              </div>
             )}
           </CardContent>
         </Card>
