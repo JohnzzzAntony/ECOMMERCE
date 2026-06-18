@@ -587,6 +587,7 @@ function ProductsSection() {
   const [brands, setBrands] = useState<Brand[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
 
   useEffect(() => {
     Promise.all([api.categories(), api.brands()])
@@ -796,7 +797,7 @@ function ProductsSection() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="size-8" onClick={() => toast.info(`Edit ${p.name}`)}>
+                      <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditingProduct(p)}>
                         <Pencil className="size-4" />
                       </Button>
                       <Button variant="ghost" size="icon" className="size-8 text-red-500 hover:text-red-600" onClick={() => handleDeleteProduct(p.id, p.name)}>
@@ -839,6 +840,15 @@ function ProductsSection() {
         categories={categories}
         brands={brands}
         onCreated={refreshProducts}
+      />
+
+      {/* Edit Product Modal */}
+      <EditProductModal
+        product={editingProduct}
+        onOpenChange={(open) => { if (!open) setEditingProduct(null) }}
+        categories={categories}
+        brands={brands}
+        onSaved={refreshProducts}
       />
     </div>
   )
@@ -974,6 +984,153 @@ function AddProductModal({ open, onOpenChange, categories, brands, onCreated }: 
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={handleSubmit} disabled={saving}>
             {saving ? 'Creating...' : 'Create Product'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Edit Product Modal ───────────────────────────────────────────────────
+function EditProductModal({ product, onOpenChange, categories, brands, onSaved }: {
+  product: Product | null
+  onOpenChange: (v: boolean) => void
+  categories: Category[]
+  brands: Brand[]
+  onSaved: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    name: '', shortDescription: '', description: '', sku: '',
+    regularPrice: '', salePrice: '', onSale: false, stockQty: '0',
+    categoryId: '', brandId: '', isFeatured: false, isExclusive: false,
+  })
+
+  // Pre-fill form when product changes
+  useEffect(() => {
+    if (product) {
+      setForm({
+        name: product.name || '',
+        shortDescription: product.shortDescription || '',
+        description: product.description || '',
+        sku: product.sku || '',
+        regularPrice: String(product.regularPrice || ''),
+        salePrice: product.salePrice ? String(product.salePrice) : '',
+        onSale: product.onSale || false,
+        stockQty: String(product.stockQty || 0),
+        categoryId: product.categoryId || '',
+        brandId: product.brandId || '',
+        isFeatured: product.isFeatured || false,
+        isExclusive: product.isExclusive || false,
+      })
+    }
+  }, [product])
+
+  const set = (key: string, value: any) => setForm((f) => ({ ...f, [key]: value }))
+
+  const handleSubmit = async () => {
+    if (!product || !form.name || !form.regularPrice) {
+      toast.error('Name and regular price are required')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/products', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: product.id, ...form }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      toast.success('Product updated successfully!')
+      onOpenChange(false)
+      onSaved()
+    } catch {
+      toast.error('Failed to update product')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!product} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Product</DialogTitle>
+          <DialogDescription>Update product details. Changes save immediately.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2">
+          <div className="grid gap-2">
+            <Label>Product Name <span className="text-red-500">*</span></Label>
+            <Input value={form.name} onChange={(e) => set('name', e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label>Short Description</Label>
+            <Input value={form.shortDescription} onChange={(e) => set('shortDescription', e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label>Full Description</Label>
+            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>SKU</Label>
+              <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Stock Quantity</Label>
+              <Input type="number" value={form.stockQty} onChange={(e) => set('stockQty', e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Regular Price (AED) <span className="text-red-500">*</span></Label>
+              <Input type="number" value={form.regularPrice} onChange={(e) => set('regularPrice', e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Sale Price (AED)</Label>
+              <Input type="number" value={form.salePrice} onChange={(e) => set('salePrice', e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Category</Label>
+              <Select value={form.categoryId} onValueChange={(v) => set('categoryId', v)}>
+                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Brand</Label>
+              <Select value={form.brandId} onValueChange={(v) => set('brandId', v)}>
+                <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
+                <SelectContent>
+                  {brands.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-4 rounded-lg border border-border p-3">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={form.onSale} onCheckedChange={(v) => set('onSale', v)} /> On Sale
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={form.isFeatured} onCheckedChange={(v) => set('isFeatured', v)} /> Featured
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={form.isExclusive} onCheckedChange={(v) => set('isExclusive', v)} /> Exclusive
+            </label>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={handleSubmit} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
           </Button>
         </div>
       </DialogContent>
