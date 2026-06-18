@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Heart, ShoppingBag, ArrowRight, ShoppingCart, Loader2 } from 'lucide-react'
+import { Heart, ShoppingBag, ArrowRight, ShoppingCart, Loader2, Share2, Copy } from 'lucide-react'
 import { useStore } from '@/store/use-store'
 import { api } from '@/lib/api'
 import { ProductCard } from '@/components/product/product-card'
@@ -50,6 +50,29 @@ export function WishlistView() {
     navigate('cart')
   }
 
+  const handleShareWishlist = async () => {
+    if (products.length === 0) return
+    // Encode product slugs into a shareable URL hash
+    const slugs = products.map((p) => p.slug).join(',')
+    const shareUrl = `${window.location.origin}/?wishlist=${encodeURIComponent(slugs)}`
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'My JKR Wishlist', url: shareUrl })
+      } else {
+        await navigator.clipboard.writeText(shareUrl)
+        toast.success('Wishlist link copied to clipboard!')
+      }
+    } catch {
+      // Fallback: copy to clipboard
+      try {
+        await navigator.clipboard.writeText(shareUrl)
+        toast.success('Wishlist link copied to clipboard!')
+      } catch {
+        toast.error('Failed to share wishlist')
+      }
+    }
+  }
+
   // Empty state
   if (!loading && products.length === 0) {
     return (
@@ -92,14 +115,25 @@ export function WishlistView() {
           </p>
         </div>
         {!loading && products.length > 0 && (
-          <Button
-            onClick={handleMoveAllToCart}
-            className="bg-brand-teal text-white hover:bg-brand-teal-dark"
-            size="lg"
-          >
-            <ShoppingCart className="mr-2 h-4 w-4" />
-            Move All to Cart
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleShareWishlist}
+              variant="outline"
+              className="border-brand-teal/40 text-brand-teal hover:bg-brand-teal hover:text-white"
+              size="lg"
+            >
+              <Share2 className="mr-2 h-4 w-4" />
+              Share
+            </Button>
+            <Button
+              onClick={handleMoveAllToCart}
+              className="bg-brand-teal text-white hover:bg-brand-teal-dark"
+              size="lg"
+            >
+              <ShoppingCart className="mr-2 h-4 w-4" />
+              Move All to Cart
+            </Button>
+          </div>
         )}
       </div>
 

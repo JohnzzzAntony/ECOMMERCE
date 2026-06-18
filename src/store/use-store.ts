@@ -110,6 +110,13 @@ interface AppState {
   recentSearches: string[]
   addRecentSearch: (q: string) => void
   clearRecentSearches: () => void
+
+  // Toast notifications (in-app email simulation)
+  notifications: { id: string; type: string; title: string; message: string; read: boolean; createdAt: number }[]
+  addNotification: (n: { type: string; title: string; message: string }) => void
+  markNotificationRead: (id: string) => void
+  clearNotifications: () => void
+  unreadCount: () => number
 }
 
 export const useStore = create<AppState>()(
@@ -218,6 +225,21 @@ export const useStore = create<AppState>()(
           ].slice(0, 6),
         })),
       clearRecentSearches: () => set({ recentSearches: [] }),
+
+      notifications: [],
+      addNotification: (n) =>
+        set((s) => ({
+          notifications: [
+            { id: `n-${Date.now()}`, ...n, read: false, createdAt: Date.now() },
+            ...s.notifications,
+          ].slice(0, 20),
+        })),
+      markNotificationRead: (id) =>
+        set((s) => ({
+          notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
+        })),
+      clearNotifications: () => set({ notifications: [] }),
+      unreadCount: () => get().notifications.filter((n) => !n.read).length,
     }),
     {
       name: 'jkr-store',
@@ -231,6 +253,7 @@ export const useStore = create<AppState>()(
         recentlyViewed: s.recentlyViewed,
         compareList: s.compareList,
         recentSearches: s.recentSearches,
+        notifications: s.notifications,
       }),
     }
   )

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '@/store/use-store'
 import { api } from '@/lib/api'
+import { NotificationBell } from '@/components/layout/notification-bell'
 import type { Category, Brand, Collection } from '@/types'
 import { cn } from '@/lib/utils'
 import {
@@ -193,6 +194,7 @@ export function Header() {
 
           {/* Action icons */}
           <div className="flex items-center gap-1 sm:gap-2">
+            <NotificationBell />
             <button
               onClick={() => navigate(user ? 'profile' : 'login')}
               className="flex flex-col items-center rounded-lg px-2 py-1.5 text-brand-ink transition-colors hover:bg-secondary"

@@ -1389,6 +1389,12 @@ function OrdersEnquiriesSection() {
                         body: JSON.stringify({ id: o.id, orderStatus: v }),
                       })
                       toast.success(`Order status updated to: ${v}`)
+                      // Simulate email notification to customer
+                      useStore.getState().addNotification({
+                        type: 'order_status',
+                        title: `Order ${o.orderNumber} — ${v.charAt(0).toUpperCase() + v.slice(1)}`,
+                        message: `Your order status has been updated to "${v}". You will receive an email confirmation at ${o.email}.`,
+                      })
                       // Update local state
                       setOrders((prev) => prev.map((ord) => ord.id === o.id ? { ...ord, orderStatus: v } : ord))
                       setDetail({ ...o, orderStatus: v } as Order)
@@ -1634,6 +1640,7 @@ function BlogSection() {
   const [posts, setPosts] = useState<BlogPost[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingPost, setEditingPost] = useState<BlogPost | null>(null)
 
   const fetchPosts = () => {
     api.blog()
@@ -1715,7 +1722,7 @@ function BlogSection() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="size-8" onClick={() => toast.info(`Edit ${p.title}`)}>
+                      <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditingPost(p)}>
                         <Pencil className="size-4" />
                       </Button>
                       <Button variant="ghost" size="icon" className="size-8 text-red-500" onClick={() => handleDelete(p.id, p.title)}>
@@ -1732,6 +1739,9 @@ function BlogSection() {
 
       {/* Create Blog Post Modal */}
       <CreateBlogPostModal open={showCreateModal} onOpenChange={setShowCreateModal} onCreated={fetchPosts} />
+
+      {/* Edit Blog Post Modal */}
+      <EditBlogPostModal post={editingPost} onOpenChange={(open) => { if (!open) setEditingPost(null) }} onSaved={fetchPosts} />
     </div>
   )
 }
@@ -1807,6 +1817,94 @@ function CreateBlogPostModal({ open, onOpenChange, onCreated }: {
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={handleSubmit} disabled={saving}>
             {saving ? 'Publishing...' : 'Publish Post'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Edit Blog Post Modal ─────────────────────────────────────────────────
+function EditBlogPostModal({ post, onOpenChange, onSaved }: {
+  post: BlogPost | null
+  onOpenChange: (v: boolean) => void
+  onSaved: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ title: '', excerpt: '', content: '', category: 'General', authorName: 'JKR Editorial' })
+
+  useEffect(() => {
+    if (post) {
+      setForm({
+        title: post.title || '',
+        excerpt: post.excerpt || '',
+        content: post.content || '',
+        category: post.category || 'General',
+        authorName: post.authorName || 'JKR Editorial',
+      })
+    }
+  }, [post])
+
+  const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }))
+
+  const handleSubmit = async () => {
+    if (!post || !form.title || !form.content) {
+      toast.error('Title and content are required')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/blog', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: post.id, ...form }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      toast.success('Blog post updated!')
+      onOpenChange(false)
+      onSaved()
+    } catch {
+      toast.error('Failed to update post')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!post} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Blog Post</DialogTitle>
+          <DialogDescription>Update the blog article content.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2">
+          <div className="grid gap-2">
+            <Label>Title <span className="text-red-500">*</span></Label>
+            <Input value={form.title} onChange={(e) => set('title', e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Category</Label>
+              <Input value={form.category} onChange={(e) => set('category', e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Author</Label>
+              <Input value={form.authorName} onChange={(e) => set('authorName', e.target.value)} />
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label>Excerpt</Label>
+            <Input value={form.excerpt} onChange={(e) => set('excerpt', e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label>Content <span className="text-red-500">*</span></Label>
+            <Textarea value={form.content} onChange={(e) => set('content', e.target.value)} rows={6} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={handleSubmit} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
           </Button>
         </div>
       </DialogContent>
