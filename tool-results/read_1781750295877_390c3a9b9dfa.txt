@@ -1,0 +1,920 @@
+     1→# JKR International — Medical Equipment E-Commerce Platform
+     2→## Full Site Specification & Wireframe Blueprint for AI Build
+     3→
+     4→> **Reference Site:** https://web-production-5e010.up.railway.app/
+     5→> **Business:** Premium medical equipment supplier — UAE-based (Dubai & Abu Dhabi)
+     6→> **Model:** Enquiry-cart + direct purchase hybrid (B2B/B2C)
+     7→> **Currency:** AED | **Languages:** English + Arabic (RTL support required)
+     8→
+     9→---
+    10→
+    11→## 1. TECH STACK RECOMMENDATION
+    12→
+    13→```
+    14→Frontend:   Next.js 14 (App Router) + TypeScript + Tailwind CSS
+    15→Backend:    Django REST Framework (or Next.js API Routes if keeping JS-only)
+    16→Database:   PostgreSQL (products, users, orders, blog, enquiries)
+    17→Auth:       JWT + Django-allauth (or NextAuth.js)
+    18→Media:      Cloudinary (image CDN — already in use on reference site)
+    19→Search:     Algolia or Django Haystack (full-text product search)
+    20→Payments:   Tabby + Tamara + Network International + Cash on Delivery
+    21→Hosting:    Railway / Render / Vercel (frontend) + Railway (backend)
+    22→Admin:      Django Admin (customized) OR custom React admin panel
+    23→Email:      Resend / SendGrid (transactional: order confirm, newsletters)
+    24→```
+    25→
+    26→---
+    27→
+    28→## 2. SITE ARCHITECTURE / PAGES MAP
+    29→
+    30→```
+    31→PUBLIC SITE
+    32→├── / (Home)
+    33→├── /products/                        → All categories page
+    34→│   ├── /products/category/:slug/     → Category listing (with subcats)
+    35→│   ├── /products/brand/:slug/        → Brand listing
+    36→│   ├── /products/collection/:slug/   → Curated collection
+    37→│   ├── /products/results/            → Search + filtered results
+    38→│   └── /products/:slug/              → Product detail page
+    39→├── /enquiry-cart/cart/               → Enquiry cart (not checkout)
+    40→├── /wishlist/
+    41→├── /accounts/
+    42→│   ├── /accounts/login/
+    43→│   ├── /accounts/register/
+    44→│   └── /accounts/profile/
+    45→├── /blog/
+    46→│   └── /blog/:slug/
+    47→├── /about-us/
+    48→├── /contact/
+    49→├── /store-locations/
+    50→├── /faq/
+    51→├── /shipping-info/
+    52→├── /terms-conditions/
+    53→├── /privacy-policy/
+    54→└── /offers/ (redirects to ?on_sale=1 filter)
+    55→
+    56→ADMIN PANEL (separate route or subdomain)
+    57→└── /admin/
+    58→    ├── Dashboard (stats, quick actions)
+    59→    ├── Products (CRUD, bulk ops, import CSV)
+    60→    ├── Categories & Subcategories
+    61→    ├── Brands
+    62→    ├── Collections
+    63→    ├── Orders & Enquiries
+    64→    ├── Users / Customers
+    65→    ├── Blog Posts
+    66→    ├── Gallery
+    67→    ├── Slider / Hero Banners
+    68→    ├── Testimonials
+    69→    ├── Client Logos (Partners)
+    70→    ├── Settings (site info, SEO, contact details)
+    71→    └── Newsletter Subscribers
+    72→```
+    73→
+    74→---
+    75→
+    76→## 3. DATABASE SCHEMA
+    77→
+    78→### Products
+    79→```sql
+    80→Product {
+    81→  id, slug, name, name_ar,
+    82→  description, description_ar,
+    83→  short_description,
+    84→  sku, barcode,
+    85→  regular_price (AED), sale_price (AED),
+    86→  on_sale (bool), discount_percent (auto-calc),
+    87→  stock_qty, in_stock (bool),
+    88→  category_id (FK), subcategory_id (FK),
+    89→  brand_id (FK),
+    90→  is_featured, is_exclusive,
+    91→  meta_title, meta_description, meta_keywords,
+    92→  created_at, updated_at
+    93→}
+    94→
+    95→ProductImage {
+    96→  id, product_id (FK), image_url (Cloudinary),
+    97→  alt_text, sort_order, is_primary
+    98→}
+    99→
+   100→ProductReview {
+   101→  id, product_id (FK), user_id (FK),
+   102→  rating (1–5), review_text, is_approved, created_at
+   103→}
+   104→```
+   105→
+   106→### Taxonomy
+   107→```sql
+   108→Category {
+   109→  id, slug, name, name_ar, image_url,
+   110→  parent_id (FK, nullable → subcategory),
+   111→  sort_order, is_active
+   112→}
+   113→
+   114→Brand {
+   115→  id, slug, name, logo_url, description, is_active
+   116→}
+   117→
+   118→Collection {
+   119→  id, slug, name, name_ar,
+   120→  banner_image_url, is_active, sort_order
+   121→}
+   122→
+   123→CollectionProduct { collection_id (FK), product_id (FK), sort_order }
+   124→```
+   125→
+   126→### Users & Accounts
+   127→```sql
+   128→User {
+   129→  id, email, phone, first_name, last_name,
+   130→  role (customer | admin | staff),
+   131→  is_active, date_joined
+   132→}
+   133→
+   134→Address {
+   135→  id, user_id (FK), label, line1, line2,
+   136→  city, emirate, country, is_default
+   137→}
+   138→```
+   139→
+   140→### Orders & Enquiries
+   141→```sql
+   142→EnquiryCart {
+   143→  id, session_key (for guests), user_id (FK nullable),
+   144→  created_at
+   145→}
+   146→
+   147→EnquiryCartItem {
+   148→  id, cart_id (FK), product_id (FK), quantity, notes
+   149→}
+   150→
+   151→Order {
+   152→  id, order_number, user_id (FK),
+   153→  billing_address (JSON), shipping_address (JSON),
+   154→  items (JSON snapshot), subtotal, discount, total,
+   155→  payment_method (tabby|tamara|network|cod),
+   156→  payment_status, order_status,
+   157→  notes, created_at, updated_at
+   158→}
+   159→
+   160→OrderItem {
+   161→  id, order_id (FK), product_id (FK),
+   162→  product_name, sku, unit_price, qty, subtotal
+   163→}
+   164→```
+   165→
+   166→### Content
+   167→```sql
+   168→BlogPost {
+   169→  id, slug, title, title_ar,
+   170→  excerpt, content (rich text), author_id (FK),
+   171→  cover_image_url, is_published, published_at,
+   172→  meta_title, meta_description
+   173→}
+   174→
+   175→Testimonial {
+   176→  id, name, role, avatar_url, content, rating,
+   177→  is_active, sort_order
+   178→}
+   179→
+   180→ClientLogo { id, name, logo_url, website_url, sort_order, is_active }
+   181→
+   182→HeroSlide {
+   183→  id, image_url, title, subtitle, cta_label, cta_url,
+   184→  sort_order, is_active
+   185→}
+   186→
+   187→GalleryItem { id, image_url, caption, sort_order, is_active }
+   188→
+   189→SiteSettings {
+   190→  key (unique), value
+   191→  -- e.g. site_name, logo_url, phone_dubai, phone_abudhabi,
+   192→  --      email, address_dubai, address_abudhabi,
+   193→  --      whatsapp_number, instagram_url, free_delivery_threshold
+   194→}
+   195→
+   196→NewsletterSubscriber { id, email, subscribed_at, is_active }
+   197→```
+   198→
+   199→---
+   200→
+   201→## 4. PAGE-BY-PAGE WIREFRAMES
+   202→
+   203→---
+   204→
+   205→### 4.1 HOME PAGE `/`
+   206→
+   207→```
+   208→┌─────────────────────────────────────────────────────┐
+   209→│ TOP BAR (full-width, teal/dark bg)                  │
+   210→│  📦 Free UAE Delivery on Purchases Above AED 2000   │
+   211→│                              [En] | [عر]            │
+   212→│  📷 Instagram  💬 WhatsApp  📘 Facebook             │
+   213→├─────────────────────────────────────────────────────┤
+   214→│ HEADER (white, sticky)                              │
+   215→│  [LOGO]         [Search bar 🔍]      [👤] [♡0] [🛒0]│
+   216→│  Nav: Home | Brands▾ | Collections▾ | Offers | Blog │
+   217→│       About | Contact | Store Locations             │
+   218→├─────────────────────────────────────────────────────┤
+   219→│ HERO SLIDER (full-width, 600px tall)                │
+   220→│  ┌───────────────────────────────────────────────┐  │
+   221→│  │  [Slide image — medical equipment / clinic]   │  │
+   222→│  │                                               │  │
+   223→│  │  State-of-the-art diagnostic instruments      │  │
+   224→│  │  from globally certified manufacturers.       │  │
+   225→│  │           [Shop Now]  [View Catalog]          │  │
+   226→│  └───────────────────────────────────────────────┘  │
+   227→│  ● ○ ○   (dot pagination + arrows)                  │
+   228→├─────────────────────────────────────────────────────┤
+   229→│ TRUST BAR (4 columns, icon + label + sub)           │
+   230→│  🚚 Fast Delivery │ 🔒 Secure Payment               │
+   231→│  💬 24/7 Support  │ ⭐ ISO Certified                │
+   232→├─────────────────────────────────────────────────────┤
+   233→│ SECTION: Shop by Categories                         │
+   234→│  Heading: "Our Categories"                          │
+   235→│  Sub: "Shop by Categories"                          │
+   236→│  ┌────┐ ┌────┐ ┌────┐ ┌────┐                       │
+   237→│  │Icon│ │Icon│ │Icon│ │Icon│  (grid 4×2)            │
+   238→│  │Whlchr│Walk│ │Seat│ │Pros│                        │
+   239→│  └────┘ └────┘ └────┘ └────┘                       │
+   240→│  ┌────┐ ┌────┐ ┌────┐ ┌────┐                       │
+   241→│  │Phys│ │Orth│ │Hosp│ │Home│                        │
+   242→│  └────┘ └────┘ └────┘ └────┘                       │
+   243→├─────────────────────────────────────────────────────┤
+   244→│ SECTION: Exclusive Products (Featured/New)          │
+   245→│  Heading: "Our premier healthcare selections"       │
+   246→│  Sub: "Exclusive Products"    [View All →]          │
+   247→│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐  │
+   248→│  │[Image]  │ │[Image]  │ │[Image]  │ │[Image]  │  │
+   249→│  │10% OFF  │ │10% OFF  │ │ 8% OFF  │ │ 7% OFF  │  │
+   250→│  │Product  │ │Product  │ │Product  │ │Product  │  │
+   251→│  │Name     │ │Name     │ │Name     │ │Name     │  │
+   252→│  │⭐⭐⭐⭐⭐(50)│         │         │         │  │
+   253→│  │~~5600~~ │                                       │
+   254→│  │5000 AED │                                       │
+   255→│  │[Shop Now]                                       │
+   256→│  └─────────┘ ...                                   │
+   257→│  (horizontal scroll or 4-col grid)                 │
+   258→├─────────────────────────────────────────────────────┤
+   259→│ BANNER AD (full-width clickable promotional image)  │
+   260→├─────────────────────────────────────────────────────┤
+   261→│ SECTION: Exclusive Collections (Tabbed)             │
+   262→│  [Premium Collections] [Selected Offers] [Signature]│
+   263→│  → Tab content: grid of 4–5 products (same card UI) │
+   264→├─────────────────────────────────────────────────────┤
+   265→│ SECTION: On Sale Now                                │
+   266→│  Heading: "Limited-time offers"   [View All →]      │
+   267→│  → 4-col product card grid                         │
+   268→├─────────────────────────────────────────────────────┤
+   269→│ FEATURE GRID (2×4 icons)                            │
+   270→│  Precision Engineering │ ISO 9001 Certified         │
+   271→│  Global Logistics      │ Direct Support             │
+   272→│  Fast Delivery         │ 24/7 Tech Support          │
+   273→│  Competitive Pricing   │ Easy Financing             │
+   274→├─────────────────────────────────────────────────────┤
+   275→│ SECTION: Testimonials / Reviews                     │
+   276→│  Heading: "What our Customers have shared!"         │
+   277→│  ┌──────────────────────┐  ┌──────────────────────┐ │
+   278→│  │  "Quote text..."     │  │  "Quote text..."     │ │
+   279→│  │  [Avatar] Name       │  │  [Avatar] Name       │ │
+   280→│  │  Title, Hospital     │  │  Title, Hospital     │ │
+   281→│  └──────────────────────┘  └──────────────────────┘ │
+   282→│  (carousel or 3-col grid)                           │
+   283→├─────────────────────────────────────────────────────┤
+   284→│ SECTION: Trusted Partners / Clients                 │
+   285→│  Heading: "Our Valued Clients"                      │
+   286→│  [Logo] [Logo] [Logo] [Logo] [Logo] [Logo] ...      │
+   287→│  (auto-scrolling marquee)                           │
+   288→├─────────────────────────────────────────────────────┤
+   289→│ SECTION: Blog                                       │
+   290→│  Heading: "From Our Blog"    [View All Posts →]     │
+   291→│  ┌──────────────────┐  ┌──────────────────┐         │
+   292→│  │ [Cover Image]    │  │ [Cover Image]    │         │
+   293→│  │ Title            │  │ Title            │         │
+   294→│  │ Excerpt…         │  │ Excerpt…         │         │
+   295→│  │ Apr 11 · Read →  │  │ ...              │         │
+   296→│  └──────────────────┘  └──────────────────┘         │
+   297→├─────────────────────────────────────────────────────┤
+   298→│ SECTION: Newsletter                                 │
+   299→│  "Stay in the Loop"                                 │
+   300→│  [Email input          ] [Subscribe]                │
+   301→│  No spam. Unsubscribe anytime.                      │
+   302→├─────────────────────────────────────────────────────┤
+   303→│ SECTION: Instagram Feed                             │
+   304→│  @jkrinternational  [Follow on Instagram]           │
+   305→│  [Post][Post][Post][Post][Post][Post]  (6 grid)     │
+   306→├─────────────────────────────────────────────────────┤
+   307→│ SECTION: Gallery                                    │
+   308→│  "Latest Gallery & Updates"                         │
+   309→│  [Img][Img][Img]  (lightbox on click)               │
+   310→│  [Img][Img][Img]                                    │
+   311→├─────────────────────────────────────────────────────┤
+   312→│ FOOTER (dark bg)                                    │
+   313→│  [LOGO]                                             │
+   314→│  Tagline                                            │
+   315→│  Dubai address | Abu Dhabi address                  │
+   316→│  email | phone | socials                            │
+   317→│  ─────────────────────────────────                  │
+   318→│  Categories | Information | Newsletter              │
+   319→│  ─────────────────────────────────                  │
+   320→│  Payment: [COD][Tabby][Tamara][Network]             │
+   321→│  © 2026 JKR International. Privacy · Terms          │
+   322→│  [WhatsApp float button]                            │
+   323→└─────────────────────────────────────────────────────┘
+   324→```
+   325→
+   326→---
+   327→
+   328→### 4.2 PRODUCT LISTING PAGE `/products/category/:slug/`
+   329→
+   330→```
+   331→┌─────────────────────────────────────────────────────┐
+   332→│ HEADER (same as above)                              │
+   333→├─────────────────────────────────────────────────────┤
+   334→│ BREADCRUMB: Home > Categories > Wheelchairs         │
+   335→├─────────────────────────────────────────────────────┤
+   336→│ CATEGORY HEADER                                     │
+   337→│  [Category Banner Image]                            │
+   338→│  H1: Wheelchairs                                    │
+   339→│  Subcategory pills: [All] [Active] [Bariatric] ...  │
+   340→├──────────────┬──────────────────────────────────────┤
+   341→│ SIDEBAR      │ PRODUCT GRID                         │
+   342→│ (Filters)    │                                      │
+   343→│              │  Sort by: [Featured ▾]  View: [■■][≡]│
+   344→│ ▼ Brands     │  Showing 1–12 of 48 products         │
+   345→│  □ Dynarex   │                                      │
+   346→│  □ Kirton    │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐│
+   347→│  □ Sissel    │  │[Img] │ │[Img] │ │[Img] │ │[Img] ││
+   348→│              │  │10%OFF│ │      │ │ 8%OFF│ │      ││
+   349→│ ▼ Price      │  │Name  │ │Name  │ │Name  │ │Name  ││
+   350→│  AED [  ]–   │  │★★★★★ │ │★★★★☆ │ │★★★★★ │ │★★★★☆ ││
+   351→│      [    ]  │  │~~old~│ │      │ │~~old~│ │      ││
+   352→│              │  │Price │ │Price │ │Price │ │Price ││
+   353→│ ▼ In Stock   │  │[Enq] │ │[Enq] │ │[Enq] │ │[Enq] ││
+   354→│  ○ Yes ○ All │  │  [♡] │ │  [♡] │ │  [♡] │ │  [♡] ││
+   355→│              │  └──────┘ └──────┘ └──────┘ └──────┘│
+   356→│ ▼ On Sale    │                                      │
+   357→│  □ Sale only │  [Load More] or [1][2][3] pagination │
+   358→│              │                                      │
+   359→│ [Clear All]  │                                      │
+   360→└──────────────┴──────────────────────────────────────┘
+   361→```
+   362→
+   363→---
+   364→
+   365→### 4.3 PRODUCT DETAIL PAGE `/products/:slug/`
+   366→
+   367→```
+   368→┌─────────────────────────────────────────────────────┐
+   369→│ BREADCRUMB: Home > Wheelchairs > Transfer Board     │
+   370→├──────────────────────┬──────────────────────────────┤
+   371→│ IMAGE GALLERY        │ PRODUCT INFO                 │
+   372→│                      │                              │
+   373→│  ┌────────────────┐  │  H1: Transfer Board          │
+   374→│  │                │  │  Brand: [Kirton Logo]         │
+   375→│  │  [Main Image]  │  │  SKU: JKR-TB-001             │
+   376→│  │                │  │                              │
+   377→│  └────────────────┘  │  ★★★★★ (50 reviews)          │
+   378→│  [Th1][Th2][Th3][+]  │                              │
+   379→│  (thumbnail strip)   │  ~~5,600 AED~~               │
+   380→│  [Zoom] [Fullscreen] │  5,000 AED  💰 Save 10%      │
+   381→│                      │                              │
+   382→│                      │  ─────────────────────       │
+   383→│                      │  Qty: [−][1][+]              │
+   384→│                      │                              │
+   385→│                      │  [Add to Enquiry Cart]  [♡]  │
+   386→│                      │  [Add to Wishlist]           │
+   387→│                      │                              │
+   388→│                      │  ─────────────────────       │
+   389→│                      │  ✓ Free Delivery over 2000   │
+   390→│                      │  ✓ Secure Payment            │
+   391→│                      │  ✓ 24/7 Support              │
+   392→│                      │                              │
+   393→│                      │  Share: [IG][WA][FB][Copy]   │
+   394→├──────────────────────┴──────────────────────────────┤
+   395→│ PRODUCT TABS                                        │
+   396→│  [Description] [Specifications] [Reviews(50)]       │
+   397→│                                                     │
+   398→│  Description tab: rich text content                 │
+   399→│  Specs tab: key-value table                         │
+   400→│  Reviews tab: star summary + list + write review    │
+   401→├─────────────────────────────────────────────────────┤
+   402→│ RELATED PRODUCTS (horizontal scroll)                │
+   403→│  You may also like:                                 │
+   404→│  [Card][Card][Card][Card]                           │
+   405→└─────────────────────────────────────────────────────┘
+   406→```
+   407→
+   408→---
+   409→
+   410→### 4.4 ENQUIRY CART `/enquiry-cart/cart/`
+   411→
+   412→```
+   413→┌─────────────────────────────────────────────────────┐
+   414→│ H1: Your Enquiry Cart                               │
+   415→│ Note: "Submit your enquiry and our team will        │
+   416→│        contact you with pricing & availability"     │
+   417→├──────────────────────────────┬──────────────────────┤
+   418→│ CART ITEMS                   │ CART SUMMARY         │
+   419→│                              │                      │
+   420→│ ┌────────────────────────┐   │  Subtotal: 10,000 AED│
+   421→│ │[Img] Transfer Board    │   │  Discount: –500 AED  │
+   422→│ │      Qty: [−][1][+]   │   │  ─────────────────   │
+   423→│ │      5,000 AED   [✕]  │   │  Total: 9,500 AED    │
+   424→│ └────────────────────────┘   │                      │
+   425→│ ┌────────────────────────┐   │  [Submit Enquiry]    │
+   426→│ │[Img] Commode Chair     │   │  [Continue Shopping] │
+   427→│ │      Qty: [−][1][+]   │   │                      │
+   428→│ │      5,100 AED   [✕]  │   │  Payment Options:    │
+   429→│ └────────────────────────┘   │  [Tabby][Tamara]     │
+   430→│                              │  [COD][Network]      │
+   431→│ Notes/Message: [textarea]    │                      │
+   432→│                              │                      │
+   433→└──────────────────────────────┴──────────────────────┘
+   434→```
+   435→
+   436→---
+   437→
+   438→### 4.5 BLOG LIST `/blog/`
+   439→
+   440→```
+   441→┌─────────────────────────────────────────────────────┐
+   442→│ H1: From Our Blog                                   │
+   443→├──────────────────────────────┬──────────────────────┤
+   444→│ FEATURED POST (wide)         │ SIDEBAR              │
+   445→│  [Large Cover Image]         │  Search: [      🔍]  │
+   446→│  Category Tag                │                      │
+   447→│  H2: Title                   │  Recent Posts        │
+   448→│  Excerpt…                    │  [Post][Post][Post]  │
+   449→│  Apr 11, 2026  [Read More →] │                      │
+   450→├──────────────────────────────│  Categories          │
+   451→│ POST GRID (2-col)            │  [Cat1] [Cat2] ...   │
+   452→│  [Card][Card]                │                      │
+   453→│  [Card][Card]                │  Newsletter Widget   │
+   454→│  [Card][Card]                │  [Email] [Subscribe] │
+   455→├──────────────────────────────┴──────────────────────┤
+   456→│ [Pagination: 1 2 3 … Next]                          │
+   457→└─────────────────────────────────────────────────────┘
+   458→```
+   459→
+   460→---
+   461→
+   462→### 4.6 CONTACT PAGE `/contact/`
+   463→
+   464→```
+   465→┌─────────────────────────────────────────────────────┐
+   466→│ H1: Contact Us                                      │
+   467→├──────────────────────────────┬──────────────────────┤
+   468→│ CONTACT FORM                 │ INFO + MAP           │
+   469→│                              │                      │
+   470→│ Name: [____________]         │  📍 Dubai Office     │
+   471→│ Email: [____________]        │  Office No.2, Lootah │
+   472→│ Phone: [____________]        │  Building, Dubai     │
+   473→│                              │                      │
+   474→│ Subject: [____________]      │  📍 Abu Dhabi Office │
+   475→│                              │  Al Fardan Holdings  │
+   476→│ Message: [                ]  │                      │
+   477→│          [                ]  │  📞 +971 4 123 4567  │
+   478→│          [                ]  │  📧 info@jkrintl.com │
+   479→│                              │  💬 WhatsApp         │
+   480→│ [Send Message]               │                      │
+   481→│                              │  [Google Map Embed]  │
+   482→└──────────────────────────────┴──────────────────────┘
+   483→```
+   484→
+   485→---
+   486→
+   487→### 4.7 STORE LOCATIONS `/store-locations/`
+   488→
+   489→```
+   490→┌─────────────────────────────────────────────────────┐
+   491→│ H1: Our Locations                                   │
+   492→├─────────────────────────────────────────────────────┤
+   493→│ [Full-width Google Map with pins]                   │
+   494→├──────────────────────┬──────────────────────────────┤
+   495→│ Dubai                │ Abu Dhabi                    │
+   496→│ [Map pin icon]       │ [Map pin icon]               │
+   497→│ Address              │ Address                      │
+   498→│ Phone                │ Phone                        │
+   499→│ Hours                │ Hours                        │
+   500→│ [Get Directions]     │ [Get Directions]             │
+   501→└──────────────────────┴──────────────────────────────┘
+   502→```
+   503→
+   504→---
+   505→
+   506→## 5. ADMIN PANEL WIREFRAMES
+   507→
+   508→### 5.1 ADMIN DASHBOARD `/admin/`
+   509→
+   510→```
+   511→┌─────────────────────────────────────────────────────┐
+   512→│ ADMIN SIDEBAR                                       │
+   513→│  [Logo]                                             │
+   514→│  ─────────────                                      │
+   515→│  📊 Dashboard        ← active                       │
+   516→│  📦 Products                                        │
+   517→│     └ Categories                                    │
+   518→│     └ Brands                                        │
+   519→│     └ Collections                                   │
+   520→│  🛒 Orders                                          │
+   521→│  📋 Enquiries                                       │
+   522→│  👥 Users                                           │
+   523→│  ✍️  Blog                                           │
+   524→│  🖼️  Media (Gallery, Sliders)                       │
+   525→│  ⭐ Testimonials                                    │
+   526→│  🏢 Clients / Partners                              │
+   527→│  📧 Newsletter                                      │
+   528→│  ⚙️  Settings                                       │
+   529→├─────────────────────────────────────────────────────┤
+   530→│ MAIN CONTENT AREA                                   │
+   531→│                                                     │
+   532→│  Welcome back, Admin 👋                             │
+   533→│  ─────────────────────────────────────────          │
+   534→│                                                     │
+   535→│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ │
+   536→│  │ Products │ │  Orders  │ │Enquiries │ │  Users │ │
+   537→│  │   142    │ │    28    │ │    15    │ │   320  │ │
+   538→│  │ +5 today │ │ +3 today │ │ +2 today │ │+1 today│ │
+   539→│  └──────────┘ └──────────┘ └──────────┘ └────────┘ │
+   540→│                                                     │
+   541→│  RECENT ORDERS (table)                              │
+   542→│  #  | Customer | Products | Total | Status | Date  │
+   543→│  001│ Ahmed M. │ 2 items  │4500AED│Pending │Today  │
+   544→│  002│ Sarah J. │ 1 item   │8700AED│Confirm.│Today  │
+   545→│  ...                                                │
+   546→│                                                     │
+   547→│  RECENT ENQUIRIES                                   │
+   548→│  Similar table layout                               │
+   549→│                                                     │
+   550→│  QUICK ACTIONS                                      │
+   551→│  [+ Add Product] [+ New Blog Post] [View Enquiries] │
+   552→└─────────────────────────────────────────────────────┘
+   553→```
+   554→
+   555→---
+   556→
+   557→### 5.2 ADMIN: PRODUCTS LIST `/admin/products/`
+   558→
+   559→```
+   560→┌─────────────────────────────────────────────────────┐
+   561→│ Products                         [+ Add Product]    │
+   562→│                                                     │
+   563→│ Search: [______________]  Filter: [Category▾][Brand▾]│
+   564→│         [On Sale: □]  [In Stock: □]  [Clear]        │
+   565→│                                                     │
+   566→│ [Import CSV] [Export CSV]    Selected: 0  [Bulk ▾]  │
+   567→│                                                     │
+   568→│ ┌─┬──────────┬────────────┬───────┬──────┬─────┬──┐ │
+   569→│ │□│ Image    │ Name       │ Price │Stock │Sale │  │ │
+   570→│ ├─┼──────────┼────────────┼───────┼──────┼─────┼──┤ │
+   571→│ │□│[Thumb]   │Transfer Bd │5000AED│  12  │ ✓  │✏️🗑│ │
+   572→│ │□│[Thumb]   │Commode Chr │5100AED│   8  │ ✓  │✏️🗑│ │
+   573→│ │□│[Thumb]   │Gynecol Chr │8700AED│   5  │ ○  │✏️🗑│ │
+   574→│ └─┴──────────┴────────────┴───────┴──────┴─────┴──┘ │
+   575→│                                                     │
+   576→│ Showing 1–20 of 142   [< 1 2 3 … 8 >]              │
+   577→└─────────────────────────────────────────────────────┘
+   578→```
+   579→
+   580→---
+   581→
+   582→### 5.3 ADMIN: ADD/EDIT PRODUCT `/admin/products/edit/:id/`
+   583→
+   584→```
+   585→┌─────────────────────────────────────────────────────┐
+   586→│ ← Back to Products                                  │
+   587→│ Edit Product: Transfer Board                        │
+   588→├────────────────────────────┬────────────────────────┤
+   589→│ MAIN INFO                  │ PUBLISH PANEL          │
+   590→│                            │                        │
+   591→│ Name (EN): [___________]   │ Status: [Published▾]   │
+   592→│ Name (AR): [___________]   │ [Save Draft] [Publish] │
+   593→│                            │                        │
+   594→│ Slug: [transfer-board]     │ Category: [_______▾]   │
+   595→│ SKU: [JKR-001]             │ Subcategory: [____▾]   │
+   596→│                            │ Brand: [__________▾]   │
+   597→│ Description (EN):          │                        │
+   598→│ [Rich Text Editor          │ Collections:           │
+   599→│  — Bold/Italic/H2/Lists    │ [Premium] [x]          │
+   600→│  — Image insert            │ [+ Add Collection]     │
+   601→│                          ] │                        │
+   602→│                            │ Is Featured: [✓]       │
+   603→│ Description (AR):          │ Is Exclusive: [✓]      │
+   604→│ [Rich Text Editor RTL    ] │                        │
+   605→│                            │ STOCK                  │
+   606→│ PRICING                    │ Qty: [____]            │
+   607→│ Regular Price: [5600] AED  │ In Stock: [Yes▾]       │
+   608→│ Sale Price: [5000] AED     │                        │
+   609→│ On Sale: [✓]               │ SEO                    │
+   610→│ Discount: 10% (auto)       │ Meta Title: [______]   │
+   611→│                            │ Meta Desc: [_______]   │
+   612→├────────────────────────────┴────────────────────────┤
+   613→│ IMAGES                                              │
+   614→│  [Drop images here or click to upload]              │
+   615→│  ┌────┐ ┌────┐ ┌────┐ ┌────┐                       │
+   616→│  │Img1│ │Img2│ │Img3│ │ +  │  (drag to reorder)    │
+   617→│  │[★] │ │    │ │    │ │    │  [★]=primary           │
+   618→│  └────┘ └────┘ └────┘ └────┘                       │
+   619→└─────────────────────────────────────────────────────┘
+   620→```
+   621→
+   622→---
+   623→
+   624→### 5.4 ADMIN: ORDERS & ENQUIRIES `/admin/orders/`
+   625→
+   626→```
+   627→┌─────────────────────────────────────────────────────┐
+   628→│ Orders & Enquiries                                  │
+   629→│ [Orders] [Enquiries]  ← tabs                        │
+   630→│                                                     │
+   631→│ Filter: [Status▾] [Payment▾] [Date Range] [Search]  │
+   632→│                                                     │
+   633→│ ┌────┬──────────┬───────────┬───────┬───────┬──────┐│
+   634→│ │ #  │ Customer │ Items     │ Total │Status │Action││
+   635→│ ├────┼──────────┼───────────┼───────┼───────┼──────┤│
+   636→│ │001 │Ahmed M.  │ 2 items   │4500AED│Pending│[View]││
+   637→│ │    │          │           │       │       │[✓][✕]││
+   638→│ │002 │Sarah J.  │ 1 item    │8700AED│Confirm│[View]││
+   639→│ └────┴──────────┴───────────┴───────┴───────┴──────┘│
+   640→│                                                     │
+   641→│ Order Detail Modal / Page:                          │
+   642→│  Customer: Ahmed Al-Rashidi                         │
+   643→│  Phone: +971 50 xxx xxxx                           │
+   644→│  Address: Dubai, UAE                                │
+   645→│  Items: [list]                                      │
+   646→│  Total: 4,500 AED                                  │
+   647→│  Payment: Tabby                                     │
+   648→│  Notes: "Please deliver before Thursday"            │
+   649→│  Status: [Pending▾]  [Update Status]                │
+   650→└─────────────────────────────────────────────────────┘
+   651→```
+   652→
+   653→---
+   654→
+   655→### 5.5 ADMIN: SITE SETTINGS `/admin/settings/`
+   656→
+   657→```
+   658→┌─────────────────────────────────────────────────────┐
+   659→│ Site Settings                                       │
+   660→│ Tabs: [General] [SEO] [Social] [Payment] [Shipping] │
+   661→│                                                     │
+   662→│ GENERAL TAB                                         │
+   663→│  Site Name: [JKR International]                     │
+   664→│  Tagline: [Delivering world-class medical...]        │
+   665→│  Logo: [Current logo] [Upload new]                  │
+   666→│  Favicon: [Current] [Upload]                        │
+   667→│                                                     │
+   668→│  Dubai Phone: [+971 4 123 4567]                     │
+   669→│  Abu Dhabi Phone: [+971 2 xxx xxxx]                 │
+   670→│  WhatsApp: [+971 50 123 4567]                       │
+   671→│  Email: [info@jkrinternational.com]                 │
+   672→│                                                     │
+   673→│  Dubai Address: [_______________________________]   │
+   674→│  AbuDhabi Address: [____________________________]   │
+   675→│                                                     │
+   676→│  Free Delivery Threshold: [2000] AED                │
+   677→│  Instagram Handle: [@jkrinternational]              │
+   678→│                                                     │
+   679→│  Top Bar Announcement: [Free UAE Delivery on...]    │
+   680→│                                                     │
+   681→│  [Save Settings]                                    │
+   682→└─────────────────────────────────────────────────────┘
+   683→```
+   684→
+   685→---
+   686→
+   687→### 5.6 ADMIN: HERO SLIDER `/admin/media/slider/`
+   688→
+   689→```
+   690→┌─────────────────────────────────────────────────────┐
+   691→│ Hero Slides                      [+ Add Slide]      │
+   692→│                                                     │
+   693→│ (drag handles to reorder)                           │
+   694→│ ┌─────────────────────────────────────┬────────────┐│
+   695→│ │ ⠿ [Thumb] Title: "Medical Hero"    │[Edit][🗑] ││
+   696→│ │         Active: [✓]  Order: 1      │           ││
+   697→│ ├─────────────────────────────────────┼────────────┤│
+   698→│ │ ⠿ [Thumb] Title: "Rehabilitation"  │[Edit][🗑] ││
+   699→│ │         Active: [✓]  Order: 2      │           ││
+   700→│ └─────────────────────────────────────┴────────────┘│
+   701→│                                                     │
+   702→│ Edit Slide Modal:                                   │
+   703→│  Image: [Upload / Cloudinary URL]                   │
+   704→│  Title: [______________________________]            │
+   705→│  Subtitle: [____________________________]           │
+   706→│  CTA Label: [Shop Now]                              │
+   707→│  CTA URL: [/products/]                              │
+   708→│  Is Active: [✓]                                     │
+   709→│  [Save]                                             │
+   710→└─────────────────────────────────────────────────────┘
+   711→```
+   712→
+   713→---
+   714→
+   715→## 6. API ENDPOINTS (REST)
+   716→
+   717→### Public
+   718→```
+   719→GET  /api/products/                  → list (filter: category, brand, on_sale, search)
+   720→GET  /api/products/:slug/            → detail
+   721→GET  /api/categories/                → full tree
+   722→GET  /api/brands/                    → list
+   723→GET  /api/collections/               → list
+   724→GET  /api/collections/:slug/products/→ products in collection
+   725→GET  /api/blog/                      → posts list
+   726→GET  /api/blog/:slug/                → post detail
+   727→GET  /api/testimonials/              → active testimonials
+   728→GET  /api/clients/                   → partner logos
+   729→GET  /api/slider/                    → active hero slides
+   730→GET  /api/gallery/                   → gallery items
+   731→GET  /api/settings/                  → public site settings
+   732→POST /api/newsletter/subscribe/      → email subscription
+   733→POST /api/contact/                   → contact form submission
+   734→```
+   735→
+   736→### Auth
+   737→```
+   738→POST /api/auth/login/
+   739→POST /api/auth/register/
+   740→POST /api/auth/logout/
+   741→GET  /api/auth/profile/
+   742→PUT  /api/auth/profile/
+   743→```
+   744→
+   745→### Cart & Orders
+   746→```
+   747→GET  /api/cart/                      → get cart (session or user)
+   748→POST /api/cart/add/                  → add item
+   749→PUT  /api/cart/:item_id/             → update qty
+   750→DEL  /api/cart/:item_id/             → remove item
+   751→POST /api/enquiry/submit/            → submit enquiry cart as order
+   752→GET  /api/wishlist/
+   753→POST /api/wishlist/toggle/
+   754→```
+   755→
+   756→### Admin (JWT protected, admin role)
+   757→```
+   758→CRUD /api/admin/products/
+   759→CRUD /api/admin/categories/
+   760→CRUD /api/admin/brands/
+   761→CRUD /api/admin/collections/
+   762→CRUD /api/admin/orders/
+   763→CRUD /api/admin/blog/
+   764→CRUD /api/admin/testimonials/
+   765→CRUD /api/admin/clients/
+   766→CRUD /api/admin/slider/
+   767→CRUD /api/admin/gallery/
+   768→CRUD /api/admin/settings/
+   769→GET  /api/admin/dashboard/stats/
+   770→GET  /api/admin/newsletter/subscribers/
+   771→```
+   772→
+   773→---
+   774→
+   775→## 7. KEY FEATURES CHECKLIST
+   776→
+   777→### Frontend
+   778→- [ ] Sticky responsive navbar with mega-menu (Brands + Collections dropdowns)
+   779→- [ ] RTL/LTR language toggle (EN/AR) — full Arabic translation support
+   780→- [ ] Hero carousel with auto-play, dots, arrows
+   781→- [ ] Category grid with icons and hover effects
+   782→- [ ] Product card: image, discount badge, star rating, original + sale price, enquiry + wishlist CTAs
+   783→- [ ] Product detail: image gallery with zoom, tabs (description/specs/reviews), related products
+   784→- [ ] Enquiry cart (not traditional checkout — collect enquiries, not payments directly)
+   785→- [ ] Wishlist (localStorage for guests, DB for logged-in users)
+   786→- [ ] Product search with autocomplete
+   787→- [ ] Filter sidebar: by brand, price range, in-stock, on-sale
+   788→- [ ] Collections page with tabbed filtering
+   789→- [ ] Blog with category filter + sidebar
+   790→- [ ] Newsletter signup (header + footer + dedicated section)
+   791→- [ ] Instagram feed grid
+   792→- [ ] Photo gallery with lightbox
+   793→- [ ] Testimonials carousel
+   794→- [ ] Partner logos marquee / scroll
+   795→- [ ] Store locations page with Google Maps embed
+   796→- [ ] FAQ accordion
+   797→- [ ] WhatsApp floating CTA button
+   798→- [ ] SEO: meta tags, OG tags, sitemap, canonical URLs per page
+   799→- [ ] Payment logos in footer: Tabby, Tamara, Network International, COD
+   800→- [ ] Free delivery banner (threshold: AED 2,000)
+   801→
+   802→### Backend / Admin
+   803→- [ ] Rich text editor for products & blog (TipTap or Quill)
+   804→- [ ] Cloudinary image upload integration
+   805→- [ ] Bulk product import via CSV
+   806→- [ ] Stock management with low-stock alerts
+   807→- [ ] Order/enquiry status management (Pending → Confirmed → Shipped → Delivered)
+   808→- [ ] Role-based access (Admin, Staff, Customer)
+   809→- [ ] Newsletter subscriber export
+   810→- [ ] SEO fields on all content types
+   811→- [ ] Multi-language content fields (EN + AR)
+   812→- [ ] Hero slider management (drag-to-reorder, active toggle)
+   813→- [ ] Gallery management
+   814→- [ ] Testimonial management
+   815→- [ ] Client logo management
+   816→- [ ] Site settings panel (phone, address, announcements, thresholds)
+   817→- [ ] Dashboard analytics (product count, orders, enquiries, subscribers)
+   818→
+   819→---
+   820→
+   821→## 8. DESIGN TOKENS
+   822→
+   823→```
+   824→Colors:
+   825→  Primary:      #0D6B8C   (teal/medical blue — trust, healthcare)
+   826→  Primary Dark: #09505F
+   827→  Accent:       #00B4D8   (bright teal — CTAs, badges)
+   828→  Gold:         #E8A100   (sale badges, highlights)
+   829→  Dark:         #1A1A2E   (text, header)
+   830→  Light BG:     #F7F9FC   (page background)
+   831→  White:        #FFFFFF
+   832→  Border:       #E2E8F0
+   833→  Error:        #EF4444
+   834→  Success:      #22C55E
+   835→
+   836→Typography:
+   837→  Display:  "Plus Jakarta Sans" (headings)
+   838→  Body:     "Inter" (UI text, descriptions)
+   839→  Arabic:   "Cairo" (RTL content)
+   840→
+   841→Spacing Scale: 4px base (4/8/12/16/24/32/48/64/96px)
+   842→Border Radius: 8px cards, 4px buttons, 2px inputs
+   843→Shadows: subtle card shadow (0 2px 8px rgba(0,0,0,0.08))
+   844→
+   845→Breakpoints:
+   846→  Mobile:  < 640px
+   847→  Tablet:  640px – 1024px
+   848→  Desktop: > 1024px
+   849→```
+   850→
+   851→---
+   852→
+   853→## 9. INTEGRATIONS SUMMARY
+   854→
+   855→| Service | Purpose | Notes |
+   856→|---|---|---|
+   857→| Cloudinary | Image hosting & CDN | Already in use on reference site |
+   858→| Tabby | BNPL payment | Middle East focused |
+   859→| Tamara | BNPL payment | UAE/Saudi market |
+   860→| Network International | Card payments | UAE card gateway |
+   861→| Google Maps | Store locations embed | Static embed key |
+   862→| Instagram Basic API | Feed display | Or use Behold/Elfsight widget |
+   863→| WhatsApp Business | Float button + links | `wa.me/` deep links |
+   864→| SendGrid / Resend | Transactional email | Order confirm, newsletters |
+   865→| Algolia (optional) | Advanced product search | Or Django Haystack |
+   866→| Google Analytics | Traffic analytics | GA4 |
+   867→
+   868→---
+   869→
+   870→## 10. FOLDER STRUCTURE SUGGESTION (Next.js)
+   871→
+   872→```
+   873→/
+   874→├── app/
+   875→│   ├── (public)/
+   876→│   │   ├── page.tsx                  ← Home
+   877→│   │   ├── products/
+   878→│   │   │   ├── page.tsx              ← All Categories
+   879→│   │   │   ├── category/[slug]/page.tsx
+   880→│   │   │   ├── brand/[slug]/page.tsx
+   881→│   │   │   ├── collection/[slug]/page.tsx
+   882→│   │   │   ├── results/page.tsx
+   883→│   │   │   └── [slug]/page.tsx       ← Product Detail
+   884→│   │   ├── blog/
+   885→│   │   ├── about-us/page.tsx
+   886→│   │   ├── contact/page.tsx
+   887→│   │   └── ...
+   888→│   ├── (admin)/
+   889→│   │   └── admin/
+   890→│   │       ├── page.tsx              ← Dashboard
+   891→│   │       ├── products/
+   892→│   │       ├── orders/
+   893→│   │       ├── blog/
+   894→│   │       ├── settings/
+   895→│   │       └── ...
+   896→│   └── api/
+   897→│       ├── products/route.ts
+   898→│       ├── auth/route.ts
+   899→│       └── ...
+   900→├── components/
+   901→│   ├── layout/ (Navbar, Footer, Sidebar)
+   902→│   ├── home/ (HeroSlider, CategoryGrid, ProductRow, etc.)
+   903→│   ├── product/ (ProductCard, ProductGallery, ReviewSection)
+   904→│   ├── cart/ (CartDrawer, CartItem)
+   905→│   ├── admin/ (DataTable, RichTextEditor, ImageUpload)
+   906→│   └── ui/ (Button, Badge, Modal, Toast, etc.)
+   907→├── lib/
+   908→│   ├── api.ts         ← API client
+   909→│   ├── auth.ts
+   910→│   └── cloudinary.ts
+   911→├── types/
+   912→│   └── index.ts
+   913→└── public/
+   914→```
+   915→
+   916→---
+   917→
+   918→*Spec generated from: https://web-production-5e010.up.railway.app/*
+   919→*Purpose: Full AI-build blueprint for JKR International–style medical equipment e-commerce platform with admin panel*
+   920→
