@@ -12,6 +12,7 @@ import {
 import { useStore } from '@/store/use-store'
 import { api } from '@/lib/api'
 import { ProductCard } from '@/components/product/product-card'
+import { RecentlyViewed } from '@/components/product/recently-viewed'
 import { StarRating } from '@/components/product/star-rating'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -1028,6 +1029,7 @@ export function HomeView() {
           <GallerySection gallery={data.gallery} />
         </>
       )}
+      <RecentlyViewed />
     </div>
   )
 }

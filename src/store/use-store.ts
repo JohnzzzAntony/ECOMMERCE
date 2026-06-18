@@ -29,6 +29,7 @@ export type ViewKey =
   | 'register'
   | 'profile'
   | 'admin'
+  | 'compare'
 
 export interface NavParams {
   slug?: string
@@ -88,6 +89,21 @@ interface AppState {
   // Settings
   settings: Record<string, string>
   setSettings: (s: Record<string, string>) => void
+
+  // Recently viewed products (localStorage, max 8)
+  recentlyViewed: string[]
+  addRecentlyViewed: (productId: string) => void
+
+  // Product comparison (localStorage, max 4)
+  compareList: string[]
+  toggleCompare: (productId: string) => void
+  isInCompare: (productId: string) => boolean
+  clearCompare: () => void
+  compareCount: () => number
+
+  // Quick view modal
+  quickViewProduct: Product | null
+  setQuickViewProduct: (p: Product | null) => void
 }
 
 export const useStore = create<AppState>()(
@@ -159,6 +175,33 @@ export const useStore = create<AppState>()(
 
       settings: {},
       setSettings: (s) => set({ settings: s }),
+
+      recentlyViewed: [],
+      addRecentlyViewed: (productId) =>
+        set((s) => ({
+          recentlyViewed: [
+            productId,
+            ...s.recentlyViewed.filter((id) => id !== productId),
+          ].slice(0, 8),
+        })),
+
+      compareList: [],
+      toggleCompare: (productId) =>
+        set((s) => {
+          if (s.compareList.includes(productId)) {
+            return { compareList: s.compareList.filter((id) => id !== productId) }
+          }
+          if (s.compareList.length >= 4) {
+            return { compareList: [...s.compareList.slice(1), productId] }
+          }
+          return { compareList: [...s.compareList, productId] }
+        }),
+      isInCompare: (productId) => get().compareList.includes(productId),
+      clearCompare: () => set({ compareList: [] }),
+      compareCount: () => get().compareList.length,
+
+      quickViewProduct: null,
+      setQuickViewProduct: (p) => set({ quickViewProduct: p }),
     }),
     {
       name: 'jkr-store',
@@ -169,6 +212,8 @@ export const useStore = create<AppState>()(
         wishlist: s.wishlist,
         user: s.user,
         settings: s.settings,
+        recentlyViewed: s.recentlyViewed,
+        compareList: s.compareList,
       }),
     }
   )

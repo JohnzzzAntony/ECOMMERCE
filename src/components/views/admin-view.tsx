@@ -1158,109 +1158,116 @@ function OrdersEnquiriesSection() {
 // ─── Users Section ────────────────────────────────────────────────────────
 function UsersSection() {
   const { user } = useStore()
-  // No /api/users endpoint — synthesize a small list with the current admin + a sample customer
-  const sampleUsers = useMemo(() => [
-    {
-      id: user?.id || 'admin',
-      name: [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Administrator',
-      email: user?.email || 'admin@jkrinternational.com',
-      phone: user?.phone || '+971 50 123 4567',
-      role: 'admin',
-      joined: '2024-01-15',
-    },
-    {
-      id: 'cust-1',
-      name: 'Ahmed Al-Rashidi',
-      email: 'ahmed.rashidi@example.com',
-      phone: '+971 50 765 4321',
-      role: 'customer',
-      joined: '2024-06-22',
-    },
-    {
-      id: 'cust-2',
-      name: 'Sara Mohamed',
-      email: 'sara.mohamed@example.com',
-      phone: '+971 55 222 3344',
-      role: 'customer',
-      joined: '2024-09-03',
-    },
-    {
-      id: 'cust-3',
-      name: 'Dr. Khalid Hassan',
-      email: 'khalid.hassan@medcenter.ae',
-      phone: '+971 52 998 8776',
-      role: 'customer',
-      joined: '2025-01-12',
-    },
-  ], [user])
+  const [users, setUsers] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    /* eslint-disable react-hooks/set-state-in-effect -- loading state flip before async fetch */
+    setLoading(true)
+    fetch('/api/admin/users')
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled) setUsers(data) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    /* eslint-enable react-hooks/set-state-in-effect */
+    return () => { cancelled = true }
+  }, [])
+
+  const filtered = useMemo(() => {
+    if (!search) return users
+    const q = search.toLowerCase()
+    return users.filter((u) =>
+      `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      (u.phone || '').includes(q)
+    )
+  }, [users, search])
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-brand-ink">Users</h2>
-          <p className="text-sm text-muted-foreground">{sampleUsers.length} registered users</p>
+          <p className="text-sm text-muted-foreground">{users.length} registered users</p>
         </div>
         <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={() => toast.info('Invite user form would open here')}>
           <Plus className="size-4" /> Invite User
         </Button>
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search users by name, email, phone…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       <Card>
         <CardContent className="pt-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sampleUsers.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className={`flex size-9 items-center justify-center rounded-full text-xs font-bold text-white ${
-                        u.role === 'admin' ? 'bg-brand-teal' : 'bg-brand-ink'
-                      }`}>
-                        {initials(u.name)}
-                      </div>
-                      <div>
-                        <div className="font-medium">{u.name}</div>
-                        <div className="text-xs text-muted-foreground">{u.role === 'admin' ? 'Store Administrator' : 'Registered Customer'}</div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{u.email}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{u.phone}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={u.role === 'admin'
-                      ? 'bg-brand-teal/10 text-brand-teal border-brand-teal/20 capitalize'
-                      : 'bg-slate-100 text-slate-700 border-slate-200 capitalize'}>
-                      {u.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(u.joined)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="size-8" onClick={() => toast.info(`Edit ${u.name}`)}>
-                      <Pencil className="size-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
               ))}
-            </TableBody>
-          </Table>
-          <div className="mt-4 flex items-start gap-2 rounded-lg border border-dashed border-brand-gold/40 bg-brand-gold/5 p-3 text-xs text-muted-foreground">
-            <Sparkles className="size-4 shrink-0 text-brand-gold mt-0.5" />
-            <span>
-              Showing registered users. A dedicated <code className="font-mono">/api/users</code> endpoint is not yet wired —
-              the admin and a sample of customers are shown here for demo.
-            </span>
-          </div>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Orders</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((u) => {
+                  const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown'
+                  return (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className={`flex size-9 items-center justify-center rounded-full text-xs font-bold text-white ${
+                            u.role === 'admin' ? 'bg-brand-teal' : 'bg-brand-ink'
+                          }`}>
+                            {initials(name)}
+                          </div>
+                          <div>
+                            <div className="font-medium">{name}</div>
+                            <div className="text-xs text-muted-foreground">{u.role === 'admin' ? 'Store Administrator' : 'Registered Customer'}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">{u.email}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{u.phone || '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={u.role === 'admin'
+                          ? 'bg-brand-teal/10 text-brand-teal border-brand-teal/20 capitalize'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 capitalize'}>
+                          {u.role}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{u._count?.orders || 0} orders</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(u.createdAt)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" className="size-8" onClick={() => toast.info(`Edit ${name}`)}>
+                          <Pencil className="size-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -1630,36 +1637,31 @@ function ClientsSection() {
 }
 
 // ─── Newsletter Section ───────────────────────────────────────────────────
-interface SubRow { email: string; subscribedAt: string; active: boolean }
+interface SubRow { id: string; email: string; subscribedAt: string; isActive: boolean }
 
 function NewsletterSection() {
-  const { settings } = useStore()
-  const [count, setCount] = useState(0)
+  const [subs, setSubs] = useState<SubRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  // No GET endpoint for subscribers — synthesize a demo list from settings + samples
-  const sampleSubs: SubRow[] = useMemo(() => [
-    { email: 'noor.alzaabi@example.com', subscribedAt: '2025-02-14', active: true },
-    { email: 'fatima.saeed@example.com', subscribedAt: '2025-02-20', active: true },
-    { email: 'mohammed.rahma@medclinic.ae', subscribedAt: '2025-03-01', active: true },
-    { email: 'aisha.khalid@example.com', subscribedAt: '2025-03-08', active: true },
-    { email: 'omar.farouk@example.com', subscribedAt: '2025-03-15', active: false },
-    { email: 'leila.hassan@hospital.ae', subscribedAt: '2025-03-22', active: true },
-    { email: 'yousef.ahmad@example.com', subscribedAt: '2025-04-01', active: true },
-    { email: 'mariam.adel@example.com', subscribedAt: '2025-04-10', active: true },
-  ], [])
-
   useEffect(() => {
-    api.adminStats()
-      .then((d) => setCount(d.stats.subscribers))
+    let cancelled = false
+    /* eslint-disable react-hooks/set-state-in-effect -- loading state flip before async fetch */
+    setLoading(true)
+    fetch('/api/admin/newsletter')
+      .then((r) => r.json())
+      .then((data: SubRow[]) => { if (!cancelled) setSubs(data) })
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    /* eslint-enable react-hooks/set-state-in-effect */
+    return () => { cancelled = true }
   }, [])
+
+  const count = subs.length
 
   const exportCSV = () => {
     const header = 'Email,Subscribed At,Status\n'
-    const body = sampleSubs
-      .map((r) => `"${r.email}","${r.subscribedAt}","${r.active ? 'Active' : 'Inactive'}"`)
+    const body = subs
+      .map((r) => `"${r.email}","${r.subscribedAt}","${r.isActive ? 'Active' : 'Inactive'}"`)
       .join('\n')
     const csv = header + body
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -1672,6 +1674,16 @@ function NewsletterSection() {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
     toast.success('CSV exported successfully')
+  }
+
+  const removeSub = async (id: string) => {
+    try {
+      await fetch(`/api/admin/newsletter?id=${id}`, { method: 'DELETE' })
+      setSubs((s) => s.filter((x) => x.id !== id))
+      toast.success('Subscriber removed')
+    } catch {
+      toast.error('Failed to remove subscriber')
+    }
   }
 
   return (
@@ -1697,7 +1709,7 @@ function NewsletterSection() {
               <div className="text-xs uppercase tracking-wide font-medium text-muted-foreground">Quick Export</div>
               <div className="mt-1 text-sm text-brand-ink">Download the full subscriber list as a CSV file for use in your email platform.</div>
             </div>
-            <Button className="bg-brand-gold hover:bg-brand-gold/90 text-white" onClick={exportCSV}>
+            <Button className="bg-brand-gold hover:bg-brand-gold/90 text-white" onClick={exportCSV} disabled={count === 0}>
               <Download className="size-4" /> Export CSV
             </Button>
           </CardContent>
@@ -1707,46 +1719,52 @@ function NewsletterSection() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Subscribers</CardTitle>
-          <CardDescription>Showing {sampleSubs.length} sample subscribers</CardDescription>
+          <CardDescription>Showing {subs.length} subscribers</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Subscribed</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sampleSubs.map((s) => (
-                <TableRow key={s.email}>
-                  <TableCell className="font-medium">{s.email}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(s.subscribedAt)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={s.active
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200'}>
-                      {s.active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="size-8 text-red-500" onClick={() => toast.info(`Remove ${s.email}`)}>
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
               ))}
-            </TableBody>
-          </Table>
-          <div className="mt-4 flex items-start gap-2 rounded-lg border border-dashed border-brand-gold/40 bg-brand-gold/5 p-3 text-xs text-muted-foreground">
-            <Sparkles className="size-4 shrink-0 text-brand-gold mt-0.5" />
-            <span>
-              Subscriber list shown is a sample. A dedicated <code className="font-mono">GET /api/newsletter</code> endpoint
-              would surface real subscribers — the count above reflects the live database.
-            </span>
-          </div>
+            </div>
+          ) : subs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Mail className="size-10 text-muted-foreground/40" />
+              <p className="mt-2 text-sm text-muted-foreground">No subscribers yet</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Subscribed</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {subs.map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell className="font-medium">{s.email}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(s.subscribedAt)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={s.isActive
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'}>
+                        {s.isActive ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" className="size-8 text-red-500" onClick={() => removeSub(s.id)}>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

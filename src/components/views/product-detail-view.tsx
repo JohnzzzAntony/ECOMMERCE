@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import {
   Home, ChevronRight, Heart, ShoppingCart, Minus, Plus, Share2, Copy,
   Truck, ShieldCheck, Headphones, MessageCircle, Facebook, Star,
-  Check, ChevronLeft, PackageSearch, ThumbsUp,
+  Check, ChevronLeft, PackageSearch, ThumbsUp, GitCompare,
 } from 'lucide-react'
 import { useStore } from '@/store/use-store'
 import { api } from '@/lib/api'
@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils'
 import type { Product, ProductReview } from '@/types'
 
 export function ProductDetailView() {
-  const { params, navigate, addToCart, toggleWishlist, isInWishlist, setCartDrawerOpen } = useStore()
+  const { params, navigate, addToCart, toggleWishlist, isInWishlist, setCartDrawerOpen, toggleCompare, isInCompare, addRecentlyViewed } = useStore()
   const slug = String(params.slug ?? '')
 
   const [product, setProduct] = useState<Product | null>(null)
@@ -55,6 +55,7 @@ export function ProductDetailView() {
         if (!active) return
         setProduct(product)
         setRelated(related)
+        addRecentlyViewed(product.id)
       })
       .catch((err) => {
         if (!active) return
@@ -111,6 +112,7 @@ export function ProductDetailView() {
   }, [reviews])
 
   const wished = product ? isInWishlist(product.id) : false
+  const compared = product ? isInCompare(product.id) : false
 
   const handleAddToCart = useCallback(() => {
     if (!product) return
@@ -416,6 +418,19 @@ export function ProductDetailView() {
                 aria-label={wished ? 'Remove from wishlist' : 'Add to wishlist'}
               >
                 <Heart size={16} className={cn(wished && 'fill-current')} />
+              </Button>
+
+              <Button
+                onClick={() => { toggleCompare(product.id); toast(compared ? 'Removed from compare' : 'Added to compare') }}
+                variant="outline"
+                size="lg"
+                className={cn(
+                  'border-brand-teal/40 text-brand-teal hover:bg-brand-teal hover:text-white',
+                  compared && 'border-brand-teal bg-accent text-brand-teal'
+                )}
+                aria-label={compared ? 'Remove from compare' : 'Add to compare'}
+              >
+                <GitCompare size={16} />
               </Button>
             </div>
 

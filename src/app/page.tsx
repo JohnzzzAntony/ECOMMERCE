@@ -6,12 +6,15 @@ import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { CartDrawer } from '@/components/cart/cart-drawer'
 import { WhatsAppFloat } from '@/components/layout/whatsapp-float'
+import { QuickViewModal } from '@/components/product/quick-view-modal'
+import { CompareBar } from '@/components/product/compare-bar'
 
 import { HomeView } from '@/components/views/home-view'
 import { ProductsView } from '@/components/views/products-view'
 import { ProductDetailView } from '@/components/views/product-detail-view'
 import { CartView } from '@/components/views/cart-view'
 import { WishlistView } from '@/components/views/wishlist-view'
+import { CompareView } from '@/components/views/compare-view'
 import { BlogView } from '@/components/views/blog-view'
 import { BlogDetailView } from '@/components/views/blog-detail-view'
 import { AboutView } from '@/components/views/about-view'
@@ -27,7 +30,7 @@ import { ProfileView } from '@/components/views/profile-view'
 import { AdminView } from '@/components/views/admin-view'
 
 export default function Home() {
-  const { view, lang, settings, setSettings } = useStore()
+  const { view, lang, settings, setSettings, compareList } = useStore()
 
   useEffect(() => {
     applyLangDir(lang)
@@ -51,6 +54,7 @@ export default function Home() {
       case 'product-detail': return <ProductDetailView />
       case 'cart': return <CartView />
       case 'wishlist': return <WishlistView />
+      case 'compare': return <CompareView />
       case 'blog': return <BlogView />
       case 'blog-detail': return <BlogDetailView />
       case 'about': return <AboutView />
@@ -69,14 +73,17 @@ export default function Home() {
   }
 
   const isAdmin = view === 'admin'
+  const showCompareBar = !isAdmin && view !== 'compare' && compareList.length > 0
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {!isAdmin && <Header />}
-      <main className="flex-1">{renderView()}</main>
+      <main className={`flex-1 ${showCompareBar ? 'pb-20' : ''}`}>{renderView()}</main>
       {!isAdmin && <Footer />}
       {!isAdmin && <CartDrawer />}
       {!isAdmin && <WhatsAppFloat />}
+      {!isAdmin && <QuickViewModal />}
+      {showCompareBar && <CompareBar />}
     </div>
   )
 }
