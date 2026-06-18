@@ -547,6 +547,43 @@ function NewArrivalsSection({ products }: { products: Product[] }) {
   )
 }
 
+// ---------- 7c. Best Sellers ----------
+
+function BestSellersSection({ products }: { products: Product[] }) {
+  const { navigate } = useStore()
+  if (products.length === 0) return null
+  return (
+    <section className="bg-white py-12 sm:py-16">
+      <div className="mx-auto max-w-7xl px-4">
+        <SectionHeading
+          sub="Customer Favorites"
+          title="Best Sellers"
+          action={
+            <Button
+              variant="ghost"
+              onClick={() => navigate('products')}
+              className="text-brand-teal hover:text-brand-teal-dark"
+            >
+              View All <ArrowRight size={16} />
+            </Button>
+          }
+        />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {products.slice(0, 4).map((p, i) => (
+            <div key={p.id} className="relative">
+              {/* Rank badge */}
+              <span className="absolute -left-2 -top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-gold to-amber-600 text-xs font-bold text-white shadow-lg">
+                #{i + 1}
+              </span>
+              <ProductCard product={p} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ---------- 8. Feature Grid ----------
 
 function FeatureGrid() {
@@ -995,6 +1032,7 @@ export function HomeView() {
     featured: Product[]
     onSale: Product[]
     newArrivals: Product[]
+    bestSellers: Product[]
     collections: Collection[]
     testimonials: Testimonial[]
     clients: ClientLogo[]
@@ -1006,6 +1044,7 @@ export function HomeView() {
     featured: [],
     onSale: [],
     newArrivals: [],
+    bestSellers: [],
     collections: [],
     testimonials: [],
     clients: [],
@@ -1022,13 +1061,14 @@ export function HomeView() {
       api.products({ featured: '1', limit: '8' }).catch(() => ({ products: [] as Product[] })),
       api.products({ on_sale: '1', limit: '8' }).catch(() => ({ products: [] as Product[] })),
       api.products({ sort: 'newest', limit: '4' }).catch(() => ({ products: [] as Product[] })),
+      api.products({ sort: 'rating', limit: '4' }).catch(() => ({ products: [] as Product[] })),
       api.collections().catch(() => [] as Collection[]),
       api.testimonials().catch(() => [] as Testimonial[]),
       api.clients().catch(() => [] as ClientLogo[]),
       api.blog({ limit: 3 }).catch(() => [] as BlogPost[]),
       api.gallery().catch(() => [] as GalleryItem[]),
     ])
-      .then(([slider, categories, featured, onSale, newArrivals, collections, testimonials, clients, blog, gallery]) => {
+      .then(([slider, categories, featured, onSale, newArrivals, bestSellers, collections, testimonials, clients, blog, gallery]) => {
         if (cancelled) return
         setData({
           slider,
@@ -1036,6 +1076,7 @@ export function HomeView() {
           featured: featured.products,
           onSale: onSale.products,
           newArrivals: newArrivals.products,
+          bestSellers: bestSellers.products,
           collections,
           testimonials,
           clients,
@@ -1072,6 +1113,7 @@ export function HomeView() {
           <BannerAd />
           <CollectionsSection collections={data.collections} />
           <NewArrivalsSection products={data.newArrivals} />
+          <BestSellersSection products={data.bestSellers} />
           <OnSaleSection products={data.onSale} />
           <FeatureGrid />
           <TestimonialsSection testimonials={data.testimonials} />

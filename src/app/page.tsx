@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, applyLangDir } from '@/store/use-store'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
@@ -31,7 +32,7 @@ import { ProfileView } from '@/components/views/profile-view'
 import { AdminView } from '@/components/views/admin-view'
 
 export default function Home() {
-  const { view, lang, settings, setSettings, compareList } = useStore()
+  const { view, params, lang, settings, setSettings, compareList } = useStore()
 
   useEffect(() => {
     applyLangDir(lang)
@@ -79,7 +80,19 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {!isAdmin && <Header />}
-      <main className={`flex-1 ${showCompareBar ? 'pb-20' : ''}`}>{renderView()}</main>
+      <main className={`flex-1 ${showCompareBar ? 'pb-20' : ''}`}>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={view + JSON.stringify(params)}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+          >
+            {renderView()}
+          </motion.div>
+        </AnimatePresence>
+      </main>
       {!isAdmin && <Footer />}
       {!isAdmin && <CartDrawer />}
       {!isAdmin && <WhatsAppFloat />}

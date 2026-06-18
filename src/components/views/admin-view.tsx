@@ -586,6 +586,7 @@ function ProductsSection() {
   const [categories, setCategories] = useState<Category[]>([])
   const [brands, setBrands] = useState<Brand[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [showAddModal, setShowAddModal] = useState(false)
 
   useEffect(() => {
     Promise.all([api.categories(), api.brands()])
@@ -617,6 +618,32 @@ function ProductsSection() {
     setSearch(''); setCategory('all'); setBrand('all'); setOnSale(false); setInStock(false); setPage(1)
   }
 
+  const refreshProducts = () => {
+    const params: Record<string, string | boolean | undefined> = {
+      page: String(page),
+      page_size: '10',
+    }
+    if (search) params.search = search
+    if (category !== 'all') params.category = category
+    if (brand !== 'all') params.brand = brand
+    if (onSale) params.on_sale = true
+    if (inStock) params.in_stock = true
+    api.products(params)
+      .then((r) => { setProducts(r.products); setTotal(r.total); setTotalPages(r.totalPages) })
+      .catch(() => toast.error('Failed to load products'))
+  }
+
+  const handleDeleteProduct = async (id: string, name: string) => {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return
+    try {
+      await fetch(`/api/admin/products?id=${id}`, { method: 'DELETE' })
+      toast.success('Product deleted')
+      refreshProducts()
+    } catch {
+      toast.error('Failed to delete product')
+    }
+  }
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -638,7 +665,7 @@ function ProductsSection() {
           <h2 className="text-xl font-bold text-brand-ink">Products</h2>
           <p className="text-sm text-muted-foreground">{formatNumber(total)} products in catalog</p>
         </div>
-        <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={() => toast.info('Add Product form would open here')}>
+        <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={() => setShowAddModal(true)}>
           <Plus className="size-4" /> Add Product
         </Button>
       </div>
@@ -772,7 +799,7 @@ function ProductsSection() {
                       <Button variant="ghost" size="icon" className="size-8" onClick={() => toast.info(`Edit ${p.name}`)}>
                         <Pencil className="size-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="size-8 text-red-500 hover:text-red-600" onClick={() => toast.info(`Delete ${p.name}`)}>
+                      <Button variant="ghost" size="icon" className="size-8 text-red-500 hover:text-red-600" onClick={() => handleDeleteProduct(p.id, p.name)}>
                         <Trash2 className="size-4" />
                       </Button>
                     </div>
@@ -804,11 +831,155 @@ function ProductsSection() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Add Product Modal */}
+      <AddProductModal
+        open={showAddModal}
+        onOpenChange={setShowAddModal}
+        categories={categories}
+        brands={brands}
+        onCreated={refreshProducts}
+      />
     </div>
   )
 }
 
-// ─── Orders & Enquiries Section ───────────────────────────────────────────
+// ─── Add Product Modal ────────────────────────────────────────────────────
+function AddProductModal({ open, onOpenChange, categories, brands, onCreated }: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  categories: Category[]
+  brands: Brand[]
+  onCreated: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    name: '',
+    shortDescription: '',
+    description: '',
+    sku: '',
+    regularPrice: '',
+    salePrice: '',
+    onSale: false,
+    stockQty: '0',
+    categoryId: '',
+    brandId: '',
+    isFeatured: false,
+    isExclusive: false,
+  })
+
+  const set = (key: string, value: any) => setForm((f) => ({ ...f, [key]: value }))
+
+  const handleSubmit = async () => {
+    if (!form.name || !form.regularPrice) {
+      toast.error('Name and regular price are required')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      if (!res.ok) throw new Error('Failed')
+      toast.success('Product created successfully!')
+      onOpenChange(false)
+      setForm({ name: '', shortDescription: '', description: '', sku: '', regularPrice: '', salePrice: '', onSale: false, stockQty: '0', categoryId: '', brandId: '', isFeatured: false, isExclusive: false })
+      onCreated()
+    } catch {
+      toast.error('Failed to create product')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add New Product</DialogTitle>
+          <DialogDescription>Create a new product in the catalog. A placeholder image will be auto-generated.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2">
+          <div className="grid gap-2">
+            <Label>Product Name <span className="text-red-500">*</span></Label>
+            <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Premium Wheelchair" />
+          </div>
+          <div className="grid gap-2">
+            <Label>Short Description</Label>
+            <Input value={form.shortDescription} onChange={(e) => set('shortDescription', e.target.value)} placeholder="Brief one-line description" />
+          </div>
+          <div className="grid gap-2">
+            <Label>Full Description</Label>
+            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} placeholder="Detailed product description" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>SKU</Label>
+              <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="Auto-generated if empty" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Stock Quantity</Label>
+              <Input type="number" value={form.stockQty} onChange={(e) => set('stockQty', e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Regular Price (AED) <span className="text-red-500">*</span></Label>
+              <Input type="number" value={form.regularPrice} onChange={(e) => set('regularPrice', e.target.value)} placeholder="e.g. 5000" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Sale Price (AED)</Label>
+              <Input type="number" value={form.salePrice} onChange={(e) => set('salePrice', e.target.value)} placeholder="Leave empty if no sale" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Category</Label>
+              <Select value={form.categoryId} onValueChange={(v) => set('categoryId', v)}>
+                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Brand</Label>
+              <Select value={form.brandId} onValueChange={(v) => set('brandId', v)}>
+                <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
+                <SelectContent>
+                  {brands.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-4 rounded-lg border border-border p-3">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={form.onSale} onCheckedChange={(v) => set('onSale', v)} /> On Sale
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={form.isFeatured} onCheckedChange={(v) => set('isFeatured', v)} /> Featured
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={form.isExclusive} onCheckedChange={(v) => set('isExclusive', v)} /> Exclusive
+            </label>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className="bg-brand-teal hover:bg-brand-teal-dark" onClick={handleSubmit} disabled={saving}>
+            {saving ? 'Creating...' : 'Create Product'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 function OrdersEnquiriesSection() {
   const [tab, setTab] = useState('orders')
   const [orders, setOrders] = useState<Order[]>([])
