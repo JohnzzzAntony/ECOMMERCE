@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   Search, Heart, ShoppingCart, User, Menu, X, ChevronDown,
   Instagram, Facebook, MessageCircle, Phone, Mail, MapPin, Globe,
+  Clock, ArrowUpRight,
 } from 'lucide-react'
 import { useStore } from '@/store/use-store'
 import { api } from '@/lib/api'
@@ -18,7 +19,7 @@ import {
 } from '@/components/ui/navigation-menu'
 
 export function Header() {
-  const { navigate, lang, toggleLang, cartCount, wishlist, user, view, params, setMobileMenuOpen, mobileMenuOpen, setCartDrawerOpen } = useStore()
+  const { navigate, lang, toggleLang, cartCount, wishlist, user, view, params, setMobileMenuOpen, mobileMenuOpen, setCartDrawerOpen, recentSearches, addRecentSearch, clearRecentSearches } = useStore()
   const [categories, setCategories] = useState<Category[]>([])
   const [brands, setBrands] = useState<Brand[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
@@ -40,14 +41,18 @@ export function Header() {
       setShowSearch(true)
     } else {
       setSearchResults([])
-      setShowSearch(false)
+      // Show recent searches when input is focused but empty
+      setShowSearch(true)
     }
   }
 
-  const submitSearch = () => {
-    if (searchValue.trim()) {
-      navigate('products-search', { query: searchValue })
+  const submitSearch = (q?: string) => {
+    const query = (q ?? searchValue).trim()
+    if (query) {
+      addRecentSearch(query)
+      navigate('products-search', { query })
       setShowSearch(false)
+      setSearchValue('')
     }
   }
 
@@ -130,7 +135,7 @@ export function Header() {
                 value={searchValue}
                 onChange={(e) => handleSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submitSearch()}
-                onFocus={() => searchResults.length && setShowSearch(true)}
+                onFocus={() => setShowSearch(true)}
                 onBlur={() => setTimeout(() => setShowSearch(false), 200)}
                 placeholder="Search for medical equipment, brands..."
                 className="ml-2 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -157,11 +162,31 @@ export function Header() {
                   </button>
                 ))}
                 <button
-                  onClick={submitSearch}
+                  onClick={() => submitSearch()}
                   className="w-full bg-secondary p-2 text-center text-xs font-semibold text-brand-teal hover:bg-accent"
                 >
                   View all results →
                 </button>
+              </div>
+            )}
+            {/* Recent searches when no results */}
+            {showSearch && searchResults.length === 0 && !searchValue && recentSearches.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-border bg-white shadow-lg">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent Searches</span>
+                  <button onClick={clearRecentSearches} className="text-[10px] font-medium text-brand-teal hover:underline">Clear</button>
+                </div>
+                {recentSearches.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => submitSearch(q)}
+                    className="flex w-full items-center gap-2 border-b border-border p-2 text-left text-sm last:border-0 hover:bg-secondary"
+                  >
+                    <Clock size={13} className="text-muted-foreground" />
+                    <span className="flex-1">{q}</span>
+                    <ArrowUpRight size={13} className="text-muted-foreground" />
+                  </button>
+                ))}
               </div>
             )}
           </div>

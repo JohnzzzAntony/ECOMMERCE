@@ -104,6 +104,11 @@ interface AppState {
   // Quick view modal
   quickViewProduct: Product | null
   setQuickViewProduct: (p: Product | null) => void
+
+  // Recent searches (localStorage, max 6)
+  recentSearches: string[]
+  addRecentSearch: (q: string) => void
+  clearRecentSearches: () => void
 }
 
 export const useStore = create<AppState>()(
@@ -202,6 +207,16 @@ export const useStore = create<AppState>()(
 
       quickViewProduct: null,
       setQuickViewProduct: (p) => set({ quickViewProduct: p }),
+
+      recentSearches: [],
+      addRecentSearch: (q) =>
+        set((s) => ({
+          recentSearches: [
+            q,
+            ...s.recentSearches.filter((x) => x.toLowerCase() !== q.toLowerCase()),
+          ].slice(0, 6),
+        })),
+      clearRecentSearches: () => set({ recentSearches: [] }),
     }),
     {
       name: 'jkr-store',
@@ -214,6 +229,7 @@ export const useStore = create<AppState>()(
         settings: s.settings,
         recentlyViewed: s.recentlyViewed,
         compareList: s.compareList,
+        recentSearches: s.recentSearches,
       }),
     }
   )

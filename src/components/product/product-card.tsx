@@ -20,6 +20,15 @@ export function ProductCard({ product, variant = 'default' }: ProductCardProps) 
   const primaryImage = product.images?.find((i) => i.isPrimary) || product.images?.[0]
   const price = effectivePrice(product)
   const hasDiscount = product.onSale && product.salePrice
+  // "NEW" badge for products created in the last 30 days
+  const isNew = (() => {
+    try {
+      const created = new Date(product.createdAt).getTime()
+      return Date.now() - created < 30 * 24 * 60 * 60 * 1000
+    } catch {
+      return false
+    }
+  })()
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -85,6 +94,11 @@ export function ProductCard({ product, variant = 'default' }: ProductCardProps) 
           {product.isFeatured && !product.isExclusive && (
             <span className="rounded-md bg-brand-cyan px-2 py-0.5 text-xs font-bold text-white shadow-sm">
               FEATURED
+            </span>
+          )}
+          {isNew && !product.isExclusive && (
+            <span className="rounded-md bg-emerald-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+              NEW
             </span>
           )}
           {!product.inStock && (

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import {
   Home, ChevronRight, Heart, ShoppingCart, Minus, Plus, Share2, Copy,
   Truck, ShieldCheck, Headphones, MessageCircle, Facebook, Star,
-  Check, ChevronLeft, PackageSearch, ThumbsUp, GitCompare,
+  Check, ChevronLeft, PackageSearch, ThumbsUp, GitCompare, Search,
 } from 'lucide-react'
 import { useStore } from '@/store/use-store'
 import { api } from '@/lib/api'
@@ -236,16 +236,37 @@ export function ProductDetailView() {
         <div className="grid gap-8 lg:grid-cols-2">
           {/* Gallery */}
           <div>
-            <div className="group relative aspect-square overflow-hidden rounded-2xl border border-border bg-white">
+            <div
+              className="group relative aspect-square overflow-hidden rounded-2xl border border-border bg-white"
+              onMouseMove={(e) => {
+                const el = e.currentTarget
+                const rect = el.getBoundingClientRect()
+                const x = ((e.clientX - rect.left) / rect.width) * 100
+                const y = ((e.clientY - rect.top) / rect.height) * 100
+                const img = el.querySelector('img[data-zoom]') as HTMLImageElement | null
+                if (img) {
+                  img.style.transformOrigin = `${x}% ${y}%`
+                }
+              }}
+            >
               {primaryImage ? (
                 <img
                   src={primaryImage.imageUrl}
                   alt={primaryImage.altText || product.name}
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-150"
+                  data-zoom
+                  style={{ transform: 'scale(1)' }}
+                  className="h-full w-full object-cover transition-transform duration-200 ease-out group-hover:scale-[2.5] cursor-zoom-in"
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
                   <PackageSearch size={48} />
+                </div>
+              )}
+
+              {/* Zoom hint */}
+              {primaryImage && (
+                <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-medium text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100">
+                  <Search size={11} /> Hover to zoom
                 </div>
               )}
 

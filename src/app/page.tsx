@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { CartDrawer } from '@/components/cart/cart-drawer'
 import { WhatsAppFloat } from '@/components/layout/whatsapp-float'
+import { BackToTop } from '@/components/layout/back-to-top'
 import { QuickViewModal } from '@/components/product/quick-view-modal'
 import { CompareBar } from '@/components/product/compare-bar'
 
@@ -82,6 +83,7 @@ export default function Home() {
       {!isAdmin && <Footer />}
       {!isAdmin && <CartDrawer />}
       {!isAdmin && <WhatsAppFloat />}
+      {!isAdmin && <BackToTop />}
       {!isAdmin && <QuickViewModal />}
       {showCompareBar && <CompareBar />}
     </div>

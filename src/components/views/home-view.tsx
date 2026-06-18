@@ -13,6 +13,7 @@ import { useStore } from '@/store/use-store'
 import { api } from '@/lib/api'
 import { ProductCard } from '@/components/product/product-card'
 import { RecentlyViewed } from '@/components/product/recently-viewed'
+import { CountdownTimer } from '@/components/product/countdown-timer'
 import { StarRating } from '@/components/product/star-rating'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -354,6 +355,9 @@ function BannerAd() {
               <p className="mt-2 max-w-xl text-sm text-white/80 sm:text-base">
                 Premium medical devices at unbeatable prices. Stock up before the offer ends.
               </p>
+              <div className="mt-4">
+                <CountdownTimer variant="light" />
+              </div>
             </div>
             <span className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-semibold text-brand-teal-dark shadow-sm transition-transform group-hover:scale-105">
               Shop Offers <ArrowRight size={16} />
@@ -485,6 +489,19 @@ function OnSaleSection({ products }: { products: Product[] }) {
             </Button>
           }
         />
+        {/* Countdown banner */}
+        <div className="mb-6 flex flex-col items-start justify-between gap-3 rounded-xl border border-brand-gold/30 bg-gradient-to-r from-brand-gold/10 via-brand-gold/5 to-transparent p-4 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-gold text-white">
+              <Clock size={16} />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-brand-ink">Offer ends soon!</p>
+              <p className="text-xs text-muted-foreground">Don&apos;t miss out on these deals</p>
+            </div>
+          </div>
+          <CountdownTimer variant="dark" />
+        </div>
         {products.length === 0 ? (
           <ProductGridSkeleton count={4} />
         ) : (
@@ -494,6 +511,37 @@ function OnSaleSection({ products }: { products: Product[] }) {
             ))}
           </div>
         )}
+      </div>
+    </section>
+  )
+}
+
+// ---------- 7b. New Arrivals ----------
+
+function NewArrivalsSection({ products }: { products: Product[] }) {
+  const { navigate } = useStore()
+  if (products.length === 0) return null
+  return (
+    <section className="bg-gradient-to-b from-secondary to-white py-12 sm:py-16">
+      <div className="mx-auto max-w-7xl px-4">
+        <SectionHeading
+          sub="Just Landed"
+          title="New Arrivals"
+          action={
+            <Button
+              variant="ghost"
+              onClick={() => navigate('products')}
+              className="text-brand-teal hover:text-brand-teal-dark"
+            >
+              View All <ArrowRight size={16} />
+            </Button>
+          }
+        />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {products.slice(0, 4).map((p) => (
+            <ProductCard key={p.id} product={p} />
+          ))}
+        </div>
       </div>
     </section>
   )
@@ -946,6 +994,7 @@ export function HomeView() {
     categories: Category[]
     featured: Product[]
     onSale: Product[]
+    newArrivals: Product[]
     collections: Collection[]
     testimonials: Testimonial[]
     clients: ClientLogo[]
@@ -956,6 +1005,7 @@ export function HomeView() {
     categories: [],
     featured: [],
     onSale: [],
+    newArrivals: [],
     collections: [],
     testimonials: [],
     clients: [],
@@ -971,19 +1021,21 @@ export function HomeView() {
       api.categories().catch(() => [] as Category[]),
       api.products({ featured: '1', limit: '8' }).catch(() => ({ products: [] as Product[] })),
       api.products({ on_sale: '1', limit: '8' }).catch(() => ({ products: [] as Product[] })),
+      api.products({ sort: 'newest', limit: '4' }).catch(() => ({ products: [] as Product[] })),
       api.collections().catch(() => [] as Collection[]),
       api.testimonials().catch(() => [] as Testimonial[]),
       api.clients().catch(() => [] as ClientLogo[]),
       api.blog({ limit: 3 }).catch(() => [] as BlogPost[]),
       api.gallery().catch(() => [] as GalleryItem[]),
     ])
-      .then(([slider, categories, featured, onSale, collections, testimonials, clients, blog, gallery]) => {
+      .then(([slider, categories, featured, onSale, newArrivals, collections, testimonials, clients, blog, gallery]) => {
         if (cancelled) return
         setData({
           slider,
           categories,
           featured: featured.products,
           onSale: onSale.products,
+          newArrivals: newArrivals.products,
           collections,
           testimonials,
           clients,
@@ -1019,6 +1071,7 @@ export function HomeView() {
           <FeaturedProducts products={data.featured} />
           <BannerAd />
           <CollectionsSection collections={data.collections} />
+          <NewArrivalsSection products={data.newArrivals} />
           <OnSaleSection products={data.onSale} />
           <FeatureGrid />
           <TestimonialsSection testimonials={data.testimonials} />
