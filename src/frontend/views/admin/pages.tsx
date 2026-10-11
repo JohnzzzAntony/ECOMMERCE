@@ -37,7 +37,7 @@ export interface AdminPage {
   theme: { id: string; name: string } | null
 }
 
-type Draft = Omit<AdminPage, 'id' | 'updatedAt' | 'theme'> & { id?: string; theme?: AdminPage['theme'] }
+export type Draft = Omit<AdminPage, 'id' | 'updatedAt' | 'theme'> & { id?: string; theme?: AdminPage['theme'] }
 
 const BLANK: Draft = {
   slug: '', title: '', content: '<h2>Heading</h2>\n<p>Write your content here.</p>', css: '', bodyClass: '',
@@ -154,17 +154,9 @@ function PageEditor({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) =>
   )
 }
 
-export function PagesSection() {
-  const { items, loading, error, reload } = useAdminList<AdminPage>('/api/admin/pages')
-  const [query, setQuery] = useState('')
-  const [draft, setDraft] = useState<Draft | null>(null)
+/** Edit/create dialog, shared by Pages and the theme editor. */
+export function PageDialog({ draft, setDraft, onSaved }: { draft: Draft | null; setDraft: (d: Draft | null) => void; onSaved: () => void }) {
   const [saving, setSaving] = useState(false)
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return q ? items.filter((p) => `${p.title} ${p.slug}`.toLowerCase().includes(q)) : items
-  }, [items, query])
-
   const save = async () => {
     if (!draft) return
     if (!draft.title.trim()) return toast.error('Title is required')
@@ -176,10 +168,39 @@ export function PagesSection() {
       else await adminApi.post('/api/admin/pages', body)
       toast.success('Page saved')
       setDraft(null)
-      reload()
+      onSaved()
       refreshStorefrontTheme()
     } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
   }
+  return (
+    <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{draft?.id ? `Edit “${draft.title}”` : 'New page'}</DialogTitle>
+          <DialogDescription>Changes are saved to the live website.</DialogDescription>
+        </DialogHeader>
+        {draft && <PageEditor draft={draft} setDraft={setDraft} />}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDraft(null)}>Cancel</Button>
+          <Button className="bg-brand-teal hover:bg-brand-teal-dark" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save page'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Page → editable draft. */
+export const pageDraft = (p: AdminPage): Draft => ({ ...p, metaTitle: p.metaTitle ?? '', metaDescription: p.metaDescription ?? '' })
+
+export function PagesSection() {
+  const { items, loading, error, reload } = useAdminList<AdminPage>('/api/admin/pages')
+  const [query, setQuery] = useState('')
+  const [draft, setDraft] = useState<Draft | null>(null)
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return q ? items.filter((p) => `${p.title} ${p.slug}`.toLowerCase().includes(q)) : items
+  }, [items, query])
 
   const remove = async (page: AdminPage) => {
     if (!confirm(`Delete "${page.title}"? Menu links to it will stop working.`)) return
@@ -247,7 +268,7 @@ export function PagesSection() {
                           </SelectContent>
                         </Select>
                         <Button variant="ghost" size="icon" asChild aria-label="View"><a href={`/?page=${p.slug}`} target="_blank" rel="noreferrer"><ExternalLink className="size-4" /></a></Button>
-                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setDraft({ ...p, metaTitle: p.metaTitle ?? '', metaDescription: p.metaDescription ?? '' })}><Pencil className="size-4" /></Button>
+                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setDraft(pageDraft(p))}><Pencil className="size-4" /></Button>
                         <Button variant="ghost" size="icon" aria-label="Delete" className="text-red-600 hover:text-red-700" onClick={() => remove(p)}><Trash2 className="size-4" /></Button>
                       </div>
                     </TableCell>
@@ -259,19 +280,7 @@ export function PagesSection() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>{draft?.id ? `Edit “${draft.title}”` : 'New page'}</DialogTitle>
-            <DialogDescription>Changes are saved to the live website.</DialogDescription>
-          </DialogHeader>
-          {draft && <PageEditor draft={draft} setDraft={setDraft} />}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDraft(null)}>Cancel</Button>
-            <Button className="bg-brand-teal hover:bg-brand-teal-dark" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save page'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PageDialog draft={draft} setDraft={setDraft} onSaved={reload} />
     </div>
   )
 }

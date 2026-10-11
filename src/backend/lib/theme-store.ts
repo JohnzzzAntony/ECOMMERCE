@@ -170,15 +170,51 @@ export function adminTheme(theme: Theme & { _count?: { pages: number } }) {
   }
 }
 
-export async function saveMenu(handle: string, items: unknown) {
+// Each theme keeps its own copy of the menus (rows with handle "<handle>@<themeId>"), so menus that come
+// with a theme survive until it is published, and switching themes brings their menus back.
+const themeHandle = (handle: MenuHandle, themeId: string) => `${handle}@${themeId}`
+
+export async function themeMenus(themeId: string): Promise<Record<MenuHandle, MenuItem[]>> {
+  const theme = await db.theme.findUnique({ where: { id: themeId }, select: { isActive: true } })
+  if (!theme) throw new HttpError(404, 'Theme not found')
+  if (theme.isActive) return menus()
+  const live = await menus()
+  const rows = await db.menu.findMany({ where: { handle: { in: (Object.keys(MENU_HANDLES) as MenuHandle[]).map((h) => themeHandle(h, themeId)) } } })
+  const out = { ...live }
+  for (const row of rows) {
+    const handle = row.handle.split('@')[0] as MenuHandle
+    out[handle] = parse(row.itemsJson, live[handle])
+  }
+  return out
+}
+
+/** Save a menu. Without a theme (or for the live theme) the store menu changes; the theme's copy always does. */
+export async function saveMenu(handle: string, items: unknown, themeId?: string) {
   if (!(handle in MENU_HANDLES)) throw new HttpError(400, 'Unknown menu')
   const clean = cleanMenu(items)
+  const itemsJson = JSON.stringify(clean)
   const name = MENU_HANDLES[handle as MenuHandle]
-  await db.menu.upsert({
-    where: { handle },
-    create: { handle, name, itemsJson: JSON.stringify(clean) },
-    update: { itemsJson: JSON.stringify(clean) },
-  })
+  const target = themeId
+    ? await db.theme.findUnique({ where: { id: themeId }, select: { id: true, isActive: true } })
+    : await activeTheme()
+  if (!target) throw new HttpError(404, 'Theme not found')
+  const handles = [themeHandle(handle as MenuHandle, target.id), ...(target.isActive ? [handle] : [])]
+  for (const h of handles) {
+    await db.menu.upsert({ where: { handle: h }, create: { handle: h, name, itemsJson }, update: { itemsJson } })
+  }
   invalidateAll()
   return clean
+}
+
+/** Publishing a theme makes its saved menus the store menus. */
+export async function applyThemeMenus(themeId: string) {
+  for (const handle of Object.keys(MENU_HANDLES) as MenuHandle[]) {
+    const row = await db.menu.findUnique({ where: { handle: themeHandle(handle, themeId) } })
+    if (row) await db.menu.upsert({ where: { handle }, create: { handle, name: row.name, itemsJson: row.itemsJson }, update: { itemsJson: row.itemsJson } })
+  }
+  invalidateAll()
+}
+
+export async function deleteThemeMenus(themeId: string) {
+  await db.menu.deleteMany({ where: { handle: { endsWith: `@${themeId}` } } })
 }

@@ -120,6 +120,14 @@ export function detectPlatform(files: Files): { kind: 'native'; manifest: string
   if (wpStyle || paths.some((p) => p.split('/').pop() === 'functions.php')) {
     throw new HttpError(422, 'This is a WordPress theme. It needs PHP and WordPress to run. Use the theme’s HTML version, or a native theme package (theme.json).')
   }
+  // React/Vue/Angular/Svelte/Next projects: use the built output (dist/, build/, out/), never the sources.
+  if (paths.some((p) => p.split('/').pop() === 'package.json')) {
+    const built = paths.filter((p) => /(^|\/)(dist|build|out|www|public_html)\/(.*\/)?index\.html?$/i.test(p) && !/node_modules/.test(p)).sort((a, b) => depth(a) - depth(b))[0]
+    if (built) return { kind: 'html', root: dirOf(built) }
+    if (!paths.some((p) => /\.html?$/i.test(p) && /<body[\s\S]*<(header|nav|main|section|div class)/i.test(strFromU8(files.get(p)!.slice(0, 200_000))))) {
+      throw new HttpError(422, 'This is an app source project (package.json). Build it first (npm run build) and upload a zip that includes the build folder (dist/, build/ or out/).')
+    }
+  }
   const html = paths.filter((p) => /^html?$/.test(ext(p)) && !DOC_DIR.test(p))
   if (html.length) {
     const index = html.filter((p) => /^index\.html?$/i.test(p.split('/').pop()!)).sort((a, b) => depth(a) - depth(b))[0]
@@ -287,6 +295,96 @@ const HTML_TEMPLATE_FIXES = `
 #preloader, .preloader, #loader, .loader-wrapper, .page-loader, #page-preloader { display: none !important; }
 `
 
+// ---------- options and menus found in HTML templates ----------
+
+const COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i
+const HEX = /#([0-9a-f]{6}|[0-9a-f]{3})\b/gi
+const MAX_OPTIONS = 40
+const optionId = (name: string) => `tpl_${name.replace(/^-+/, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}`.slice(0, 64)
+const humanize = (name: string) => name.replace(/^-+/, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 120)
+const fullHex = (hex: string) => {
+  const h = hex.slice(1).toLowerCase()
+  return `#${h.length === 3 ? h.replace(/./g, (c) => c + c) : h}`
+}
+const isGrey = (hex: string) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+  return Math.max(r, g, b) - Math.min(r, g, b) < 24
+}
+
+/**
+ * Turns a template's design tokens into theme settings so they can be edited in the customizer:
+ * `:root` custom properties (colors, fonts) when the template has them, otherwise its most used
+ * brand colors, which are rewritten to CSS variables.
+ */
+export function extractOptions(css: string): { css: string; schema: ThemeSettingDef[] } {
+  const schema: ThemeSettingDef[] = []
+  const seen = new Set<string>()
+  for (const block of css.match(/:root\s*\{[^}]*\}/g) ?? []) {
+    for (const [, name, raw] of block.matchAll(/(--[a-zA-Z0-9-]{1,60})\s*:\s*([^;}]+)/g)) {
+      const value = raw.replace(/!important/i, '').trim()
+      const id = optionId(name)
+      if (seen.has(id) || schema.length >= MAX_OPTIONS || id === 'tpl_') continue
+      if (COLOR.test(value)) schema.push({ id, type: 'color', label: humanize(name), group: 'Template colors', default: value, var: name })
+      else if (/font/i.test(name) && !/size|weight|height|spacing/i.test(name) && /[a-z]/i.test(value)) schema.push({ id, type: 'text', label: humanize(name), group: 'Template fonts', default: value.slice(0, 500), var: name })
+      else continue
+      seen.add(id)
+    }
+  }
+  if (schema.length) return { css, schema }
+
+  // No variables: offer the template's most used non-grey colors (3+ uses).
+  const counts = new Map<string, number>()
+  for (const decl of css.match(/:[^;{}]+/g) ?? []) for (const m of decl.match(HEX) ?? []) {
+    const hex = fullHex(m)
+    if (!isGrey(hex)) counts.set(hex, (counts.get(hex) ?? 0) + 1)
+  }
+  const top = [...counts.entries()].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([hex]) => hex)
+  if (!top.length) return { css, schema }
+  const vars = new Map(top.map((hex, i) => [hex, `--tpl-color-${i + 1}`]))
+  const rewritten = css.replace(/:[^;{}]+/g, (decl) => decl.replace(HEX, (m) => {
+    const name = vars.get(fullHex(m))
+    return name ? `var(${name}, ${m})` : m
+  }))
+  return {
+    css: rewritten,
+    schema: top.map((hex, i) => ({ id: `tpl_color_${i + 1}`, type: 'color', label: `Color ${i + 1}${i === 0 ? ' (most used)' : ''}`, group: 'Template colors', default: hex, var: vars.get(hex)! })),
+  }
+}
+
+const decode = (text: string) => text.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim()
+
+function links(html: string, from: string, root: string, pageLink: (path: string) => string | undefined): MenuItem[] {
+  const out: MenuItem[] = []
+  const labels = new Set<string>()
+  for (const [, href, inner] of html.matchAll(/<a\b[^>]*?\shref\s*=\s*["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const label = decode(inner).slice(0, 80)
+    if (!label || labels.has(label.toLowerCase()) || out.length >= 12) continue
+    let link = ''
+    if (/^(https?:|mailto:|tel:)/i.test(href.trim())) link = href.trim()
+    else {
+      const path = resolveRef(from, href, root)
+      const slug = path && /^html?$/.test(ext(path)) ? pageLink(path) : undefined
+      if (slug) link = `page:${slug}`
+    }
+    if (!link) continue
+    labels.add(label.toLowerCase())
+    out.push({ id: `m-${out.length}`, label, link })
+  }
+  return out
+}
+
+/** Header and footer menus from the template's home page: links in its first <nav> (or <header>) and its <footer>. */
+export function extractMenus(source: string, from: string, root: string, pageLink: (path: string) => string | undefined): ThemePlan['menus'] {
+  const nav = /<nav\b[\s\S]*?<\/nav>/i.exec(source)?.[0] ?? /<header\b[\s\S]*?<\/header>/i.exec(source)?.[0] ?? ''
+  const footer = /<footer\b[\s\S]*?<\/footer>/i.exec(source)?.[0] ?? ''
+  const menus: ThemePlan['menus'] = {}
+  const main = links(nav, from, root, pageLink)
+  if (main.length) menus.main = main
+  const foot = links(footer, from, root, pageLink)
+  if (foot.length) menus.footer = [{ id: 'm-footer', label: 'Links', link: '', children: foot }]
+  return menus
+}
+
 // ---------- plans ----------
 
 async function pageSlugs(paths: string[], root: string, slugTaken: Options['slugTaken']) {
@@ -365,6 +463,9 @@ async function planHtml(files: Files, root: string, opts: Options): Promise<Them
       metaDescription: doc.description?.slice(0, 500),
     }
   })
+  const options = extractOptions(built.css)
+  const home = docs[0]
+  const menus = home ? extractMenus(strFromU8(files.get(home.path)!), home.path, root, (p) => slugs.get(p)) : {}
   warnings.push('Template scripts run in an isolated frame. Features that need the template’s own server (PHP contact forms, newsletter signup) won’t submit.')
 
   const fileName = opts.fileName?.replace(/\.zip$/i, '').replace(/[-_]+/g, ' ').trim()
@@ -373,11 +474,11 @@ async function planHtml(files: Files, root: string, opts: Options): Promise<Them
     name: (fileName || docs[0]?.doc.title || 'HTML Template').slice(0, 120),
     version: '1.0.0',
     description: `Imported HTML template (${pages.length} page${pages.length === 1 ? '' : 's'}).`,
-    schema: [],
+    schema: options.schema,
     settings: { hide_chrome_on_home: true },
     sections: pages.length ? [{ id: 's-page-home', type: 'page', enabled: true, settings: { page: pages[0].slug } }] : [],
-    css: built.css,
-    menus: {},
+    css: options.css,
+    menus,
     pages,
     warnings,
   }

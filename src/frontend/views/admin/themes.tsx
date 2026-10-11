@@ -3,13 +3,13 @@
 // (click-to-edit sections, theme settings, custom CSS) with a live storefront preview.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, ChevronDown, Download, Eye, EyeOff, Loader2, Monitor, Palette, Plus,
-  RotateCcw, Save, Smartphone, Trash2, Upload,
+  AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, ChevronDown, Download, Eye, EyeOff, Loader2,
+  Monitor, Palette, Pencil, Plus, RotateCcw, Save, Smartphone, Trash2, Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/frontend/components/ui/badge'
 import { Button } from '@/frontend/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/frontend/components/ui/card'
+import { Card, CardContent } from '@/frontend/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/frontend/components/ui/dialog'
 import { Input } from '@/frontend/components/ui/input'
 import { Label } from '@/frontend/components/ui/label'
@@ -19,12 +19,13 @@ import { Switch } from '@/frontend/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/frontend/components/ui/tabs'
 import { Textarea } from '@/frontend/components/ui/textarea'
 import {
-  SECTION_TYPES, sectionSchema, type SectionType, type ThemeSection, type ThemeSettingDef, type ThemeSettings, type ThemeValue,
+  MENU_HANDLES, SECTION_TYPES, sectionSchema, type MenuHandle, type MenuItem, type SectionType, type ThemeSection, type ThemeSettingDef, type ThemeSettings, type ThemeValue,
 } from '@/shared/theme'
 import { EDITOR_PARAM, type EditorMessage } from '@/frontend/components/theme/editor-bridge'
 import { adminApi, errorMessage, useAdminList } from './admin-api'
 import { LinkPicker, useLinkTargets, type LinkTargets } from './link-picker'
-import { refreshStorefrontTheme } from './navigation'
+import { MenuEditor, refreshStorefrontTheme } from './navigation'
+import { PageDialog, pageDraft, type AdminPage, type Draft } from './pages'
 import { ImageUpload, LoadError, SectionHeader } from './shared'
 
 export interface AdminTheme {
@@ -46,48 +47,43 @@ export interface AdminTheme {
 
 // ---------- library ----------
 
-function InstallCard({ onInstalled }: { onInstalled: (theme: AdminTheme, warnings: string[]) => void }) {
-  const [file, setFile] = useState<File | null>(null)
+/** Compact install bar: pick a .zip, optionally publish right away. */
+function InstallBar({ onInstalled }: { onInstalled: (theme: AdminTheme, warnings: string[]) => void }) {
   const [activate, setActivate] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
 
-  const install = async () => {
-    if (!file) return
+  const install = async (file: File) => {
     const form = new FormData()
     form.append('file', file)
     form.append('activate', String(activate))
-    setBusy(true)
+    setBusy(file.name)
     try {
       const res = await adminApi.post<{ theme: AdminTheme; warnings: string[] }>('/api/admin/themes', form)
       onInstalled(res.theme, res.warnings)
-      setFile(null)
+    } catch (e) { toast.error(errorMessage(e)) } finally {
+      setBusy(null)
       if (input.current) input.current.value = ''
-    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+    }
   }
 
   return (
-    <Card className="border-dashed">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><Upload className="size-4 text-brand-teal" /> Add a theme</CardTitle>
-        <CardDescription>
-          Upload a <strong>.zip</strong>: a native theme package (<code>theme.json</code>) or a static <strong>HTML template</strong> from ThemeForest, Envato or any marketplace.
-          WordPress and Shopify themes can’t run here; use the HTML version of the theme.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Input ref={input} type="file" accept=".zip,application/zip" disabled={busy} onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="cursor-pointer sm:max-w-sm" />
-        <label className="flex items-center gap-2 text-sm"><Switch checked={activate} onCheckedChange={setActivate} disabled={busy} /> Publish after install</label>
-        <Button className="bg-brand-teal hover:bg-brand-teal-dark sm:ml-auto" disabled={!file || busy} onClick={install}>
-          {busy ? <><Loader2 className="size-4 animate-spin" /> Installing…</> : <><Upload className="size-4" /> Install</>}
-        </Button>
-      </CardContent>
-      {busy && <p className="px-6 pb-5 text-xs text-muted-foreground">Uploading the template’s images and fonts. Large templates can take a minute.</p>}
-    </Card>
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-border px-3 py-2">
+      <input ref={input} type="file" accept=".zip,application/zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) install(f) }} />
+      <Button size="sm" className="bg-brand-teal hover:bg-brand-teal-dark" disabled={!!busy} onClick={() => input.current?.click()}>
+        {busy ? <><Loader2 className="size-4 animate-spin" /> Installing…</> : <><Upload className="size-4" /> Upload theme .zip</>}
+      </Button>
+      <label className="flex items-center gap-2 text-xs"><Switch checked={activate} onCheckedChange={setActivate} disabled={!!busy} /> Publish after install</label>
+      <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        {busy
+          ? `Installing ${busy}: uploading images and fonts, creating pages, menus and options. Large templates take a minute.`
+          : 'theme.json package, HTML template, or a built React/Vue/Next site (dist/, build/, out/). Pages, menus and colors/fonts become editable.'}
+      </p>
+    </div>
   )
 }
 
-function ThemeCard({ theme, onCustomize, onChanged }: { theme: AdminTheme; onCustomize: () => void; onChanged: () => void }) {
+function ThemeRow({ theme, onCustomize, onChanged }: { theme: AdminTheme; onCustomize: () => void; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
   const swatches = ['color_primary', 'color_accent', 'color_highlight', 'color_text', 'color_surface'].map((k) => String(theme.settings[k] ?? ''))
 
@@ -111,28 +107,27 @@ function ThemeCard({ theme, onCustomize, onChanged }: { theme: AdminTheme; onCus
   }
 
   return (
-    <Card className={theme.isActive ? 'border-brand-teal ring-1 ring-brand-teal' : ''}>
-      <CardContent className="space-y-4 pt-6">
-        <div className="flex h-20 overflow-hidden rounded-lg border border-border">
-          {swatches.map((c, i) => <div key={i} className="flex-1" style={{ background: c || '#eee' }} />)}
+    <div className={`flex flex-wrap items-center gap-3 px-3 py-2.5 ${theme.isActive ? 'bg-brand-teal/5' : ''}`}>
+      <div className="flex h-8 w-16 shrink-0 overflow-hidden rounded border border-border">
+        {swatches.map((c, i) => <div key={i} className="flex-1" style={{ background: c || '#eee' }} />)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="truncate text-sm font-semibold text-brand-ink">{theme.name}</span>
+          {theme.isActive && <Badge className="h-5 bg-emerald-600 px-1.5 text-[10px]">Live</Badge>}
+          <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase">{theme.kind === 'html' ? 'HTML' : 'Native'}</Badge>
         </div>
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold text-brand-ink">{theme.name}</h3>
-            {theme.isActive && <Badge className="bg-emerald-600">Live</Badge>}
-            <Badge variant="outline" className="text-[10px] uppercase">{theme.kind === 'html' ? 'HTML template' : 'Native'}</Badge>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">v{theme.version}{theme.author ? ` · ${theme.author}` : ''}{theme.pageCount ? ` · ${theme.pageCount} page${theme.pageCount === 1 ? '' : 's'}` : ''}</p>
-          {theme.description && <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{theme.description}</p>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" className="bg-brand-teal hover:bg-brand-teal-dark" onClick={onCustomize}><Palette className="size-4" /> Customize</Button>
-          {!theme.isActive && <Button size="sm" variant="outline" disabled={busy} onClick={activate}><CheckCircle2 className="size-4" /> Publish</Button>}
-          <Button size="sm" variant="ghost" asChild><a href={`/api/admin/themes/export?id=${theme.id}`}><Download className="size-4" /> Export</a></Button>
-          {!theme.isActive && <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" disabled={busy} onClick={remove}><Trash2 className="size-4" /> Delete</Button>}
-        </div>
-      </CardContent>
-    </Card>
+        <p className="truncate text-xs text-muted-foreground">
+          v{theme.version}{theme.author ? ` · ${theme.author}` : ''}{theme.pageCount ? ` · ${theme.pageCount} page${theme.pageCount === 1 ? '' : 's'}` : ''}{theme.description ? ` · ${theme.description}` : ''}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button size="sm" className="h-8 bg-brand-teal hover:bg-brand-teal-dark" onClick={onCustomize}><Palette className="size-4" /> Edit</Button>
+        {!theme.isActive && <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={activate}><CheckCircle2 className="size-4" /> Publish</Button>}
+        <Button size="icon" variant="ghost" className="size-8" asChild title="Export"><a href={`/api/admin/themes/export?id=${theme.id}`} aria-label="Export"><Download className="size-4" /></a></Button>
+        {!theme.isActive && <Button size="icon" variant="ghost" className="size-8 text-red-600 hover:text-red-700" disabled={busy} onClick={remove} aria-label="Delete" title="Delete"><Trash2 className="size-4" /></Button>}
+      </div>
+    </div>
   )
 }
 
@@ -238,6 +233,57 @@ function SectionRow({ label, sub, enabled, onSelect, children }: { label: string
   )
 }
 
+/** The theme's own pages: click to preview in the frame, pencil to edit. */
+function ThemePages({ themeId, previewing, onPreview }: { themeId: string; previewing: string; onPreview: (slug: string) => void }) {
+  const { items, loading, reload } = useAdminList<AdminPage>('/api/admin/pages')
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const pages = items.filter((p) => p.theme?.id === themeId)
+  return (
+    <div className="space-y-1 px-2 pb-4">
+      <p className="px-2 pb-2 text-xs text-muted-foreground">Pages that came with this theme. Click to preview, pencil to edit content, styles and SEO.</p>
+      <SectionRow label={previewing ? 'Home page' : 'Home page (previewing)'} sub='Sections' onSelect={() => onPreview('')} />
+      {loading && <Skeleton className="h-10 w-full" />}
+      {!loading && !pages.length && <p className="px-2 py-3 text-xs text-muted-foreground">This theme has no pages of its own. Store pages are under Pages.</p>}
+      {pages.map((p) => (
+        <SectionRow key={p.id} label={p.title} sub={`/?page=${p.slug}${p.isPublished ? '' : ' · draft'}`} onSelect={() => onPreview(p.slug)}>
+          <Button variant="ghost" size="icon" className="size-7" onClick={() => setDraft(pageDraft(p))} aria-label="Edit page"><Pencil className="size-3.5" /></Button>
+        </SectionRow>
+      ))}
+      <PageDialog draft={draft} setDraft={setDraft} onSaved={reload} />
+    </div>
+  )
+}
+
+/** The theme's menus. For the live theme these are the store menus. */
+function ThemeMenus({ theme, targets }: { theme: AdminTheme; targets: LinkTargets }) {
+  const [menus, setMenus] = useState<Record<MenuHandle, MenuItem[]> | null>(null)
+  const [open, setOpen] = useState<MenuHandle | null>(null)
+  useEffect(() => {
+    adminApi.get<Record<MenuHandle, MenuItem[]>>(`/api/admin/menus?theme=${theme.id}`).then(setMenus).catch((e) => toast.error(errorMessage(e)))
+  }, [theme.id])
+  return (
+    <div className="space-y-1 px-2 pb-4">
+      <p className="px-2 pb-2 text-xs text-muted-foreground">
+        {theme.isActive ? 'Menus shown in the store header and footer.' : 'Saved with this theme; they become the store menus when you publish it.'}
+      </p>
+      {!menus ? <Skeleton className="h-20 w-full" /> : (Object.keys(MENU_HANDLES) as MenuHandle[]).map((h) => (
+        <SectionRow key={h} label={MENU_HANDLES[h]} sub={menus[h].map((m) => m.label).join(' · ') || 'Empty'} onSelect={() => setOpen(h)}>
+          <Button variant="ghost" size="icon" className="size-7" onClick={() => setOpen(h)} aria-label="Edit menu"><Pencil className="size-3.5" /></Button>
+        </SectionRow>
+      ))}
+      <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{open ? MENU_HANDLES[open] : ''}</DialogTitle>
+            <DialogDescription>{theme.name}</DialogDescription>
+          </DialogHeader>
+          {open && menus && <MenuEditor handle={open} saved={menus[open]} targets={targets} themeId={theme.id} onSaved={(items) => setMenus({ ...menus, [open]: items })} />}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () => void; onSaved: (t: AdminTheme) => void }) {
   const [settings, setSettings] = useState(theme.settings)
   const [sections, setSections] = useState(theme.sections)
@@ -247,6 +293,7 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
   const [adding, setAdding] = useState<SectionType | ''>('')
   const [saving, setSaving] = useState(false)
+  const [previewPage, setPreviewPage] = useState(theme.kind === 'html' ? String(sections.find((s) => s.type === 'page')?.settings.page ?? '') : '')
   const frame = useRef<HTMLIFrameElement>(null)
   const targets = useLinkTargets()
   const dirty = JSON.stringify(settings) !== JSON.stringify(theme.settings) || JSON.stringify(sections) !== JSON.stringify(theme.sections) || css !== theme.css
@@ -348,11 +395,15 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
   } else {
     panel = (
       <Tabs value={tab} onValueChange={setTab} className="gap-0">
-        <TabsList className="m-3 grid grid-cols-3">
-          <TabsTrigger value="sections">Sections</TabsTrigger>
-          <TabsTrigger value="settings">Theme</TabsTrigger>
+        <TabsList className="m-2 grid h-auto grid-cols-5 [&>button]:px-1 [&>button]:text-xs">
+          <TabsTrigger value="sections">Home</TabsTrigger>
+          <TabsTrigger value="settings">Style</TabsTrigger>
+          <TabsTrigger value="pages">Pages</TabsTrigger>
+          <TabsTrigger value="menus">Menus</TabsTrigger>
           <TabsTrigger value="css">CSS</TabsTrigger>
         </TabsList>
+        <TabsContent value="pages"><ThemePages themeId={theme.id} previewing={previewPage} onPreview={setPreviewPage} /></TabsContent>
+        <TabsContent value="menus"><ThemeMenus theme={theme} targets={targets} /></TabsContent>
         <TabsContent value="sections" className="space-y-1 px-2 pb-4">
           <p className="px-2 pb-2 text-xs text-muted-foreground">Click a section here or in the preview to edit it.</p>
           <SectionRow label="Header" sub="Logo, announcement" onSelect={() => select('@header')} />
@@ -417,7 +468,7 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
         <div className="flex min-w-0 flex-1 justify-center overflow-hidden p-3">
           <iframe
             ref={frame}
-            src={`/?${EDITOR_PARAM}=1`}
+            src={previewPage ? `/?page=${encodeURIComponent(previewPage)}&${EDITOR_PARAM}=1` : `/?${EDITOR_PARAM}=1`}
             title="Storefront preview"
             className={`h-full rounded-md border border-border bg-white shadow-sm transition-[width] duration-300 ${device === 'mobile' ? 'w-[390px]' : 'w-full'}`}
           />
@@ -444,24 +495,24 @@ export function ThemesSection() {
   }
 
   return (
-    <div className="space-y-5">
-      <SectionHeader title="Themes" subtitle="Install themes, choose the live one, and customize colors, fonts, branding, homepage sections and CSS." >
-        <Button variant="outline" asChild>
+    <div className="space-y-3">
+      <SectionHeader title="Themes" subtitle="Install, publish and edit themes: home sections, style settings, pages, menus and CSS." >
+        <Button variant="outline" size="sm" asChild>
           <a href="/docs/theme-format.md" target="_blank" rel="noreferrer">Theme format guide</a>
         </Button>
       </SectionHeader>
-      <InstallCard onInstalled={(theme, list) => {
+      <InstallBar onInstalled={(theme, list) => {
         reload()
         if (theme.isActive) refreshStorefrontTheme()
         toast.success(`${theme.name} installed`)
         if (list.length) setWarnings({ name: theme.name, list })
       }} />
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-64" />)}</div>
+        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((t) => <ThemeCard key={t.id} theme={t} onCustomize={() => setEditing(t.id)} onChanged={reload} />)}
-        </div>
+        <Card className="py-0"><CardContent className="divide-y divide-border p-0">
+          {items.map((t) => <ThemeRow key={t.id} theme={t} onCustomize={() => setEditing(t.id)} onChanged={reload} />)}
+        </CardContent></Card>
       )}
 
       <Dialog open={!!warnings} onOpenChange={(o) => !o && setWarnings(null)}>

@@ -1,7 +1,7 @@
 // Theme packages (native + HTML template import), settings → CSS, and menu links.
 import { expect, test } from 'bun:test'
 import { strToU8, zipSync } from 'fflate'
-import { pageTitles, readThemePackage } from '../src/backend/lib/theme-package'
+import { extractMenus, extractOptions, pageTitles, readThemePackage } from '../src/backend/lib/theme-package'
 import { cleanMenu, cleanSections, cleanSettings } from '../src/backend/lib/theme-store'
 import { CORE_SETTINGS, mergeSchema, resolveLink, sectionSchema, themeVariablesCss } from '../src/shared/theme'
 
@@ -158,4 +158,33 @@ test('editorial sections keep their content settings and drop invalid ones', () 
 
 test('heading weight setting is emitted as a CSS variable', () => {
   expect(themeVariablesCss(CORE_SETTINGS, { heading_weight: 500 })).toBe(':root{--theme-heading-weight:500}')
+})
+
+test('HTML template options: :root variables become settings, otherwise brand colors are made variables', () => {
+  const withVars = extractOptions(':root{--primary-color:#e11d48;--font-heading:"Poppins",sans-serif;--gap:12px}')
+  expect(withVars.schema.map((d) => [d.id, d.type, d.var, d.default])).toEqual([
+    ['tpl_primary_color', 'color', '--primary-color', '#e11d48'],
+    ['tpl_font_heading', 'text', '--font-heading', '"Poppins",sans-serif'],
+  ])
+  const plain = extractOptions('a{color:#E11D48}.b{background:#e11d48}.c{border:1px solid #e11d48}#fff{color:#fff}.d{color:#123}')
+  expect(plain.schema).toEqual([{ id: 'tpl_color_1', type: 'color', label: 'Color 1 (most used)', group: 'Template colors', default: '#e11d48', var: '--tpl-color-1' }])
+  expect(plain.css).toContain('a{color:var(--tpl-color-1, #E11D48)}')
+  expect(plain.css).toContain('#fff{color:#fff}') // selectors and greys untouched
+})
+
+test('HTML template menus come from <nav> and <footer> links to imported pages', () => {
+  const slugs = new Map([['t/about.html', 'about'], ['t/index.html', 'home']])
+  const menus = extractMenus(
+    '<header><nav><a href="index.html">Home</a><a href="about.html"><span>About</span> us</a><a href="#">Skip</a><a href="https://x.com">X</a></nav></header><footer><a href="about.html">About</a></footer>',
+    't/index.html', 't/', (p) => slugs.get(p),
+  )
+  expect(menus.main?.map((m) => [m.label, m.link])).toEqual([['Home', 'page:home'], ['About us', 'page:about'], ['X', 'https://x.com']])
+  expect(menus.footer?.[0].children?.map((m) => m.link)).toEqual(['page:about'])
+})
+
+test('App source projects use their build output, or ask for a build', async () => {
+  const opts = { ...fakeUpload(), slugTaken: async () => false }
+  const built = await readThemePackage(zip({ 'app/package.json': '{}', 'app/index.html': '<div id="root"></div>', 'app/dist/index.html': '<html><body><div id="root">x</div></body></html>' }), opts)
+  expect(built.pages.map((p) => p.slug)).toEqual(['home'])
+  await expect(readThemePackage(zip({ 'app/package.json': '{}', 'app/index.html': '<body><div id="root"></div></body>', 'app/src/App.jsx': 'x' }), opts)).rejects.toThrow('npm run build')
 })

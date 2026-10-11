@@ -64,7 +64,8 @@ function ItemRow({ item, onChange, onRemove, onMove, targets, isChild, footer }:
   )
 }
 
-function MenuEditor({ handle, saved, onSaved, targets }: { handle: MenuHandle; saved: MenuItem[]; onSaved: (items: MenuItem[]) => void; targets: LinkTargets }) {
+/** Edits a store menu, or a theme's own copy when `themeId` is given (the store menu too if that theme is live). */
+export function MenuEditor({ handle, saved, onSaved, targets, themeId }: { handle: MenuHandle; saved: MenuItem[]; onSaved: (items: MenuItem[]) => void; targets: LinkTargets; themeId?: string }) {
   const [items, setItems] = useState(saved)
   const [saving, setSaving] = useState(false)
   useEffect(() => setItems(saved), [saved])
@@ -74,7 +75,7 @@ function MenuEditor({ handle, saved, onSaved, targets }: { handle: MenuHandle; s
   const save = async () => {
     setSaving(true)
     try {
-      const res = await adminApi.put<{ items: MenuItem[] }>('/api/admin/menus', { handle, items })
+      const res = await adminApi.put<{ items: MenuItem[] }>('/api/admin/menus', { handle, items, ...(themeId ? { theme: themeId } : {}) })
       onSaved(res.items)
       refreshStorefrontTheme()
       toast.success(`${MENU_HANDLES[handle]} saved`)

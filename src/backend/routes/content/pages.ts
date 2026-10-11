@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/backend/lib/db'
 import { memo } from '@/backend/lib/memo'
+import { cleanSchema } from '@/backend/lib/theme-store'
+import { resolveSettings, themeVariablesCss } from '@/shared/theme'
 
 /** Published page by slug, for the storefront. */
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
@@ -23,10 +25,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
 /** GET /api/theme-css/:id — a theme's CSS as a stylesheet. Versioned URLs are cached for a year. */
 export async function themeCss(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const theme = await memo(`theme-css:${id}`, () => db.theme.findUnique({ where: { id }, select: { css: true } }))
+  const theme = await memo(`theme-css:${id}`, () => db.theme.findUnique({ where: { id }, select: { css: true, settingsSchema: true, settings: true } }))
   if (!theme) return new NextResponse('/* theme not found */', { status: 404, headers: { 'Content-Type': 'text/css' } })
   const versioned = new URL(request.url).searchParams.has('v')
-  return new NextResponse(theme.css, {
+  // The template's own options (colors/fonts found on import) override its CSS variables.
+  let vars = ''
+  try {
+    const schema = cleanSchema(JSON.parse(theme.settingsSchema))
+    vars = themeVariablesCss(schema, resolveSettings(schema, JSON.parse(theme.settings)))
+  } catch { /* malformed JSON: serve the CSS as is */ }
+  return new NextResponse(vars ? `${theme.css}
+${vars}
+` : theme.css, {
     headers: {
       'Content-Type': 'text/css; charset=utf-8',
       'Cache-Control': versioned ? 'public, max-age=31536000, immutable' : 'public, max-age=60',

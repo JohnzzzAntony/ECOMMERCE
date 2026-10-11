@@ -6,7 +6,9 @@ import { invalidateAll } from '@/backend/lib/memo'
 import { failure, HttpError, requireAdmin, text } from '@/backend/lib/auth'
 import { idParam, readJson, uniqueSlug } from '@/backend/lib/admin-resource'
 import { MAX_ZIP_BYTES, readThemePackage } from '@/backend/lib/theme-package'
-import { activeTheme, adminTheme, cleanSchema, cleanSections, cleanSettings, menus, saveMenu, themeSchema } from '@/backend/lib/theme-store'
+import {
+  activeTheme, adminTheme, applyThemeMenus, cleanSchema, cleanSections, cleanSettings, deleteThemeMenus, menus, saveMenu, themeMenus, themeSchema,
+} from '@/backend/lib/theme-store'
 import { uploadThemeAsset } from '@/backend/integrations/cloudinary'
 import { slugify } from '@/backend/lib/slug'
 
@@ -53,8 +55,8 @@ export async function POST(request: Request) {
       return created
     }, { timeout: 30_000 })
 
-    // Menus are store-wide; a theme's menus replace the current ones only when it goes live now.
-    if (activate) for (const [handle, items] of Object.entries(plan.menus)) await saveMenu(handle, items)
+    // Saved with the theme; they become the store menus when the theme goes live.
+    for (const [handle, items] of Object.entries(plan.menus)) await saveMenu(handle, items, theme.id)
 
     const full = await db.theme.findUniqueOrThrow({ where: { id: theme.id }, include: { _count: { select: { pages: true } } } })
     invalidateAll()
@@ -79,6 +81,7 @@ export async function PUT(request: Request) {
         db.theme.updateMany({ where: { isActive: true, NOT: { id } }, data: { isActive: false } }),
         db.theme.update({ where: { id }, data: { isActive: true } }),
       ])
+      await applyThemeMenus(id)
     }
     const data: Record<string, string> = {}
     if ('name' in body) data.name = text(body.name, 'name', 120, true)
@@ -103,6 +106,7 @@ export async function DELETE(request: Request) {
     if (!theme) throw new HttpError(404, 'Theme not found')
     if (theme.isActive) throw new HttpError(400, 'Activate another theme before deleting this one')
     await db.theme.delete({ where: { id } }) // its imported pages cascade
+    await deleteThemeMenus(id)
     invalidateAll()
     return NextResponse.json({ ok: true })
   } catch (error) { return failure(error) }
@@ -123,7 +127,7 @@ export async function exportTheme(request: Request) {
       settings_schema: cleanSchema(JSON.parse(theme.settingsSchema || '[]')),
       settings: view.settings,
       sections: view.sections,
-      menus: await menus(),
+      menus: await themeMenus(theme.id),
       css: ['assets/theme.css'],
       pages: theme.pages.map((p) => ({ slug: p.slug, title: p.title, file: `pages/${p.slug}.html`, layout: p.layout, hide_header_footer: p.hideHeaderFooter })),
     }
@@ -149,7 +153,8 @@ export async function exportTheme(request: Request) {
 export async function getMenus(request: Request) {
   try {
     await requireAdmin(request)
-    return NextResponse.json(await menus(), { headers: noStore })
+    const themeId = new URL(request.url).searchParams.get('theme')
+    return NextResponse.json(themeId ? await themeMenus(themeId) : await menus(), { headers: noStore })
   } catch (error) { return failure(error) }
 }
 
@@ -157,8 +162,8 @@ export async function putMenu(request: Request) {
   try {
     await requireAdmin(request)
     const body = await readJson(request)
-    const items = await saveMenu(text(body.handle, 'handle', 20, true), body.items)
-    invalidateAll()
+    const themeId = typeof body.theme === 'string' && body.theme ? body.theme : undefined
+    const items = await saveMenu(text(body.handle, 'handle', 20, true), body.items, themeId)
     return NextResponse.json({ ok: true, items })
   } catch (error) { return failure(error) }
 }

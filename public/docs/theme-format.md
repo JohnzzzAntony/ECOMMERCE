@@ -6,9 +6,18 @@ Admin → **Themes** → **Add a theme** accepts a `.zip` in one of two forms.
 |---|---|---|
 | **Native theme** | `theme.json` + CSS + assets (+ optional pages) | All theme settings (colors, fonts, radius, logo, header, footer, plus the theme's own settings), homepage sections, custom CSS, menus, pages |
 | **HTML template** (ThemeForest, Envato, TemplateMonster…) | `.html` pages + CSS/images/fonts | Each HTML page (Pages section), the template CSS (Customize → Custom CSS), the homepage layout, the store colors and fonts used on shop pages |
+| **Built app** (React, Vue, Angular, Svelte, Next static export) | `package.json` + `dist/`, `build/` or `out/` | Same as HTML template. Upload the zip *after* `npm run build`; source-only projects are rejected |
 
 **WordPress** (`style.css` with `Theme Name:`, `.php`) and **Shopify** (`.liquid`) themes need their own server
 platforms and are rejected. Most marketplace themes ship an HTML version, so upload that one.
+
+On HTML/app import the store also creates, from the template itself:
+- **Menus**: links in the home page's first `<nav>` (or `<header>`) become the header menu, `<footer>` links a footer column.
+- **Options**: `:root` CSS variables for colors and fonts become settings (Edit → Style → *Template colors / fonts*).
+  Templates without variables get their most used brand colors turned into variables and settings.
+
+Everything is editable in Themes → **Edit**: Home sections, Style settings, Pages, Menus, CSS. A theme's menus are kept with
+the theme and become the store menus when it is published.
 
 Export any installed theme (Themes → Export) to get a working native package to start from.
 
@@ -68,7 +77,7 @@ my-theme.zip
 }
 ```
 
-Only `name` is required. Menus from the package replace the store menus when the theme is installed with **Publish after install** on.
+Only `name` is required. Menus are saved with the theme and replace the store menus when the theme is published.
 
 ### Settings
 
