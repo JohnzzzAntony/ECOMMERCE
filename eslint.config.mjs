@@ -1,10 +1,6 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
-import { dirname } from "path";
-import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
   rules: {
@@ -42,6 +38,18 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-undef": "off",
     "no-unreachable": "off",
     "no-useless-escape": "off",
+  },
+}, {
+  // Layer boundaries: the browser bundle must never pull in server code (DB, secrets),
+  // and the backend must not depend on React UI. Shared types live in src/shared.
+  files: ["src/frontend/**"],
+  rules: {
+    "no-restricted-imports": ["error", { patterns: [{ group: ["@/backend/*", "**/backend/**"], message: "Frontend code must call the backend over HTTP (src/frontend/lib/api.ts), not import it." }] }],
+  },
+}, {
+  files: ["src/backend/**"],
+  rules: {
+    "no-restricted-imports": ["error", { patterns: [{ group: ["@/frontend/*", "**/frontend/**"], message: "Backend code must not import frontend code. Move shared types to src/shared." }] }],
   },
 }, {
   ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]

@@ -1,0 +1,489 @@
+// NexEcoms — Medical Equipment E-Commerce Platform
+// Prisma schema (PostgreSQL — Neon)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  phone     String?
+  password  String
+  firstName String?
+  lastName  String?
+  role      String   @default("customer") // customer | admin | staff
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships StoreMember[]
+  orders     Order[]
+  enquiries  Enquiry[]
+  reviews    ProductReview[]
+  addresses  Address[]
+  cartItems  CartItem[]
+}
+
+model Address {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String  @id @default(cuid())
+  userId    String
+  label     String?
+  line1     String
+  line2     String?
+  city      String
+  emirate   String?
+  country   String  @default("UAE")
+  isDefault Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+
+  @@index([storeId])
+}
+
+model Category {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  nameAr    String?
+  imageUrl  String?
+  icon      String?
+  parentId  String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@index([parentId])
+
+  @@index([storeId])
+}
+
+model Brand {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  logoUrl     String?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  products Product[]
+
+  @@index([storeId])
+}
+
+model Collection {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  nameAr        String?
+  bannerImageUrl String?
+  description   String?
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  products CollectionProduct[]
+
+  @@index([storeId])
+}
+
+model CollectionProduct {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id           String @id @default(cuid())
+  collectionId String
+  productId    String
+  sortOrder    Int    @default(0)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, productId])
+  @@index([collectionId])
+  @@index([productId])
+
+  @@index([storeId])
+}
+
+model Product {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  nameAr           String?
+  description      String?
+  descriptionAr    String?
+  shortDescription String?
+  specifications   String? // JSON string of key-value pairs
+  sku              String?
+  barcode          String?
+  regularPrice     Float
+  salePrice        Float?
+  onSale           Boolean  @default(false)
+  stockQty         Int      @default(0)
+  inStock          Boolean  @default(true)
+  categoryId       String?
+  brandId          String?
+  isFeatured       Boolean  @default(false)
+  isExclusive      Boolean  @default(false)
+  badge            String?  // e.g. 'New', 'Best Seller', 'blue', 'dark'
+  metaTitle        String?
+  metaDescription  String?
+  metaKeywords     String?
+  ratingAvg        Float    @default(0)
+  ratingCount      Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  category    Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brand       Brand?             @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  images      ProductImage[]
+  reviews     ProductReview[]
+  collections CollectionProduct[]
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+  wishlistItems WishlistItem[]
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([onSale])
+  @@index([isFeatured])
+  @@index([isExclusive])
+
+  @@index([storeId])
+}
+
+model ProductImage {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String  @id @default(cuid())
+  productId String
+  imageUrl  String
+  altText   String?
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+
+  @@index([storeId])
+}
+
+model ProductReview {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id         String   @id @default(cuid())
+  productId  String
+  userId     String?
+  authorName String
+  rating     Int
+  reviewText String?
+  isApproved Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+
+  @@index([storeId])
+}
+
+model CartItem {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String @id @default(cuid())
+  userId    String?
+  sessionId String?
+  productId String
+  quantity  Int    @default(1)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+
+  @@index([storeId])
+}
+
+model WishlistItem {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String @id @default(cuid())
+  userId    String?
+  sessionId String?
+  productId String
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+
+  @@index([storeId])
+}
+
+model Enquiry {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id         String   @id @default(cuid())
+  userId     String?
+  sessionId  String?
+  customerName  String
+  email      String
+  phone      String?
+  company    String?
+  message    String?
+  status     String   @default("new") // new | contacted | quoted | closed
+  itemsJson  String   // JSON snapshot of items
+  total      Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+
+  @@index([storeId])
+}
+
+model Order {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id              String   @id @default(cuid())
+  orderNumber     String   @unique
+  userId          String?
+  customerName    String
+  email           String
+  phone           String?
+  billingAddress  String   // JSON
+  shippingAddress String   // JSON
+  subtotal        Float    @default(0)
+  discount        Float    @default(0)
+  total           Float    @default(0)
+  paymentMethod   String   @default("cod") // tabby | tamara | network | cod
+  paymentStatus   String   @default("pending") // pending | paid | failed | refunded
+  orderStatus     String   @default("pending") // pending | confirmed | shipped | delivered | cancelled
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user  User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items OrderItem[]
+
+  @@index([userId])
+  @@index([orderStatus])
+
+  @@index([storeId])
+}
+
+model OrderItem {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id          String @id @default(cuid())
+  orderId     String
+  productId   String?
+  productName String
+  sku         String?
+  unitPrice   Float
+  qty         Int
+  subtotal    Float
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+
+  @@index([storeId])
+}
+
+model BlogPost {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  title          String
+  titleAr        String?
+  excerpt        String?
+  content        String
+  contentAr      String?
+  category       String   @default("General")
+  tags           String?
+  authorName     String   @default("Store Editorial")
+  coverImageUrl  String?
+  isPublished    Boolean  @default(true)
+  publishedAt    DateTime @default(now())
+  metaTitle      String?
+  metaDescription String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([category])
+  @@index([isPublished])
+
+  @@index([storeId])
+}
+
+model Testimonial {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String  @id @default(cuid())
+  name      String
+  role      String?
+  avatarUrl String?
+  content   String
+  rating    Int     @default(5)
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  @@index([storeId])
+}
+
+model ClientLogo {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id         String  @id @default(cuid())
+  name       String
+  logoUrl    String?
+  websiteUrl String?
+  sortOrder  Int     @default(0)
+  isActive   Boolean @default(true)
+
+  @@index([storeId])
+}
+
+model HeroSlide {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String  @id @default(cuid())
+  imageUrl  String
+  title     String?
+  subtitle  String?
+  ctaLabel  String?
+  ctaUrl    String?
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  @@index([storeId])
+}
+
+model GalleryItem {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String  @id @default(cuid())
+  imageUrl  String
+  caption   String?
+  category  String  @default("General")
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  @@index([storeId])
+}
+
+model SiteSettings {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  key   String
+  value String
+
+  @@id([storeId, key])
+  @@index([storeId])
+}
+
+model NewsletterSubscriber {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id          String   @id @default(cuid())
+  email       String
+  isActive    Boolean  @default(true)
+  subscribedAt DateTime @default(now())
+
+  @@unique([storeId, email])
+  @@index([storeId])
+}
+
+model ContactMessage {
+  storeId String @default("legacy")
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String?
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([storeId])
+}
+
+model Store {
+  id String @id @default(cuid())
+  slug String @unique
+  name String
+  domain String? @unique
+  currency String @default("AED")
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members StoreMember[]
+  recordsAddress Address[]
+  recordsCategory Category[]
+  recordsBrand Brand[]
+  recordsCollection Collection[]
+  recordsCollectionProduct CollectionProduct[]
+  recordsProduct Product[]
+  recordsProductImage ProductImage[]
+  recordsProductReview ProductReview[]
+  recordsCartItem CartItem[]
+  recordsWishlistItem WishlistItem[]
+  recordsEnquiry Enquiry[]
+  recordsOrder Order[]
+  recordsOrderItem OrderItem[]
+  recordsBlogPost BlogPost[]
+  recordsTestimonial Testimonial[]
+  recordsClientLogo ClientLogo[]
+  recordsHeroSlide HeroSlide[]
+  recordsGalleryItem GalleryItem[]
+  recordsSiteSettings SiteSettings[]
+  recordsNewsletterSubscriber NewsletterSubscriber[]
+  recordsContactMessage ContactMessage[]
+}
+
+model StoreMember {
+  id String @id @default(cuid())
+  storeId String
+  userId String
+  role String @default("customer")
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([storeId, userId])
+  @@index([userId])
+}

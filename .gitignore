@@ -52,3 +52,7 @@ prompt
 server.log
 # Skills directory
 /skills/
+# local environment (secrets) — copy .env.example to .env
+.env
+.env.*
+!.env.example

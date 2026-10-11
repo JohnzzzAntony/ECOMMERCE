@@ -1,12 +1,12 @@
 // JKR International — Medical Equipment E-Commerce Platform
-// Prisma schema (SQLite)
+// Prisma schema (PostgreSQL — Neon)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -124,11 +124,13 @@ model Product {
   brandId          String?
   isFeatured       Boolean  @default(false)
   isExclusive      Boolean  @default(false)
+  badge            String?  // e.g. 'New', 'Best Seller', 'blue', 'dark'
   metaTitle        String?
   metaDescription  String?
   metaKeywords     String?
   ratingAvg        Float    @default(0)
   ratingCount      Int      @default(0)
+  attributes       String   @default("{}") // JSON: ProductField.slug → value (custom catalogue fields)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -352,4 +354,72 @@ model ContactMessage {
   subject   String?
   message   String
   createdAt DateTime @default(now())
+}
+
+// ---------- Online store: themes, custom pages, navigation ----------
+
+// An installed theme. Exactly one row has isActive=true (enforced in the install/activate routes).
+// kind: 'native' (theme.json package) | 'html' (imported static HTML template).
+model Theme {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  version        String   @default("1.0.0")
+  author         String?
+  description    String?
+  kind           String   @default("native")
+  isActive       Boolean  @default(false)
+  settingsSchema String   @default("[]") // JSON: ThemeSettingDef[]
+  settings       String   @default("{}") // JSON: values keyed by setting id
+  sections       String   @default("[]") // JSON: homepage ThemeSection[]
+  css            String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  pages Page[]
+
+  @@index([isActive])
+}
+
+// Custom content page. Pages imported with a theme are removed with it; admin-created pages have no theme.
+// layout: 'standard' (inside the store, sanitized HTML) | 'isolated' (sandboxed frame with its own CSS).
+model Page {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  title            String
+  content          String   @default("")
+  css              String   @default("")
+  bodyClass        String   @default("") // class on <body> for isolated pages (imported templates)
+  layout           String   @default("standard")
+  hideHeaderFooter Boolean  @default(false)
+  isPublished      Boolean  @default(true)
+  metaTitle        String?
+  metaDescription  String?
+  themeId          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  theme Theme? @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@index([themeId])
+}
+
+// Navigation menu ('main' = header, 'footer' = footer columns). itemsJson: MenuItem[] (two levels).
+model Menu {
+  id        String   @id @default(cuid())
+  handle    String   @unique
+  name      String
+  itemsJson String   @default("[]")
+  updatedAt DateTime @updatedAt
+}
+
+// Custom product field, created by hand or automatically when an imported catalogue has a column
+// the store doesn't know. Values live in Product.attributes under this slug; empty values are hidden.
+model ProductField {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  label            String
+  sortOrder        Int      @default(0)
+  showOnStorefront Boolean  @default(true)
+  createdAt        DateTime @default(now())
 }
