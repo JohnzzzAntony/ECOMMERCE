@@ -28,7 +28,8 @@ export const metadata: Metadata = {
   keywords: ["medical equipment UAE", "wheelchair Dubai", "hospital equipment Abu Dhabi", "NexEcoms", "medical supplies UAE", "mobility aids", "rehabilitation equipment"],
   authors: [{ name: "NexEcoms" }],
   icons: {
-    icon: "/logo.svg",
+    icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/favicon.png", type: "image/png" }],
+    apple: "/apple-touch-icon.png",
   },
   openGraph: {
     title: "NexEcoms — Premium Medical Equipment in UAE",
