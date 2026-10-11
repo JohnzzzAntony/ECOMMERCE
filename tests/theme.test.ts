@@ -2,8 +2,8 @@
 import { expect, test } from 'bun:test'
 import { strToU8, zipSync } from 'fflate'
 import { pageTitles, readThemePackage } from '../src/backend/lib/theme-package'
-import { cleanMenu, cleanSettings } from '../src/backend/lib/theme-store'
-import { CORE_SETTINGS, mergeSchema, resolveLink, themeVariablesCss } from '../src/shared/theme'
+import { cleanMenu, cleanSections, cleanSettings } from '../src/backend/lib/theme-store'
+import { CORE_SETTINGS, mergeSchema, resolveLink, sectionSchema, themeVariablesCss } from '../src/shared/theme'
 
 const zip = (files: Record<string, string>) => zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])))
 
@@ -131,4 +131,16 @@ test('template page titles drop the shared brand and fall back to file names', (
   expect(pageTitles([{ title: 'Medi | Home', slug: 'home' }, { title: 'Medi | About Us', slug: 'about' }])).toEqual(['Home', 'About Us'])
   expect(pageTitles([{ title: 'Azurio', slug: 'home' }, { title: 'Azurio', slug: 'about-us' }])).toEqual(['Home', 'About Us'])
   expect(pageTitles([{ title: 'Contact', slug: 'contact' }])).toEqual(['Contact'])
+})
+
+test('section settings are validated against the section schema', () => {
+  const [hero, html] = cleanSections([
+    { id: 'h', type: 'hero', settings: { title: 'Hi', height: 5000, animation: 'zoom', bg_color: 'red;}', link: 'javascript:alert(1)', heading_font: 'Comic', nope: 1 } },
+    { id: 'r', type: 'rich_text', settings: { html: '<b>x</b>'.repeat(2000), animation: 'spin' } },
+    { id: 'x', type: 'unknown' },
+  ])
+  expect(hero.settings).toEqual({ title: 'Hi', height: 900, animation: 'zoom' })
+  expect(String(html.settings.html).length).toBe(16000)
+  expect(html.settings.animation).toBeUndefined()
+  expect(sectionSchema('banner').map((d) => d.id)).toContain('padding_top')
 })

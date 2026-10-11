@@ -103,6 +103,15 @@ Store color tokens you can target: `--brand-teal` (primary), `--brand-teal-dark`
 
 Section settings: `eyebrow`, `title` (most sections); `banner` adds `text`, `button_label`, `link`; `newsletter` uses
 `title`, `text`; `rich_text` uses `title`, `html`; `page` uses `page` (a page slug).
+`hero` adds `text`, `button_label`, `link`, `image` (package path or URL), `show_quote_button`, `height` (px),
+`content_align` (`left|center|right`), `overlay` (0–100), `autoplay` (seconds, 0 = off).
+`trust_bar` uses `item_1_title`, `item_1_text` … `item_4_title`, `item_4_text`.
+
+Every section also accepts style settings: `bg_color`, `bg_image`, `bg_overlay` (0–90), `text_color`, `heading_color`,
+`accent_color`, `heading_font`, `body_font`, `heading_size` (px, 0 = default), `text_align`, `padding_top`,
+`padding_bottom` (px), `animation` (`none|fade|fade-up|fade-down|zoom|slide-left|slide-right|blur`),
+`animation_duration`, `animation_delay` (ms), `hide_mobile`, `hide_desktop`, `css_class`.
+The full list with limits is `SECTION_TYPES` / `SECTION_STYLE` in `src/shared/theme.ts`; unknown or invalid values are dropped.
 
 ### Links (menus, banner)
 

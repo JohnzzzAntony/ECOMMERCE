@@ -35,7 +35,7 @@ export function Footer() {
   }
 
   return (
-    <footer className="mt-auto bg-brand-ink text-white">
+    <footer data-section-id="@footer" data-section-label="Footer" className="relative mt-auto bg-brand-ink text-white">
       {/* Newsletter band */}
       {theme.show_footer_newsletter && <div className="border-b border-white/10 bg-brand-teal-dark">
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 py-8 md:flex-row md:justify-between">

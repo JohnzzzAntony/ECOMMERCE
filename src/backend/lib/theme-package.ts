@@ -448,6 +448,7 @@ async function planNative(files: Files, manifestPath: string, opts: Options): Pr
       const sec = s as { settings?: Record<string, unknown> }
       const settings = { ...sec.settings }
       if (typeof settings.html === 'string') settings.html = rewriteHtml(settings.html, manifestPath, root, map, (p) => slugByFile.get(p))
+      for (const k of ['image', 'bg_image']) if (typeof settings[k] === 'string') settings[k] = asset(settings[k])
       if (typeof settings.page === 'string') settings.page = pageSlug(settings.page)
       if (typeof settings.link === 'string' && settings.link.startsWith('page:')) settings.link = `page:${pageSlug(settings.link.slice(5))}`
       return { ...sec, settings }

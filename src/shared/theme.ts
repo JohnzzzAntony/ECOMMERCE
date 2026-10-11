@@ -6,7 +6,8 @@
 // The package format (theme.json) is documented in public/docs/theme-format.md.
 import type { NavParams, ViewKey } from '@/frontend/store/use-store'
 
-export type ThemeSettingType = 'color' | 'text' | 'textarea' | 'image' | 'select' | 'checkbox' | 'range'
+/** link, page and html are used by section schemas (menu-style link, page picker, raw HTML). */
+export type ThemeSettingType = 'color' | 'text' | 'textarea' | 'image' | 'select' | 'checkbox' | 'range' | 'link' | 'page' | 'html'
 export type ThemeValue = string | number | boolean
 
 export interface ThemeSettingDef {
@@ -28,35 +29,93 @@ export interface ThemeSettingDef {
 
 export type ThemeSettings = Record<string, ThemeValue>
 
-export const SECTION_TYPES = {
-  hero: { label: 'Hero slider', note: 'Slides are managed under Media.', fields: [] },
-  trust_bar: { label: 'Trust bar', fields: [] },
-  categories: { label: 'Categories', fields: ['eyebrow', 'title'] },
-  featured: { label: 'Featured products', fields: ['eyebrow', 'title'] },
-  banner: { label: 'Promo banner', fields: ['eyebrow', 'title', 'text', 'button_label', 'link'] },
-  collections: { label: 'Collections', fields: ['eyebrow', 'title'] },
-  new_arrivals: { label: 'New arrivals', fields: ['eyebrow', 'title'] },
-  best_sellers: { label: 'Best sellers', fields: ['eyebrow', 'title'] },
-  on_sale: { label: 'On sale', fields: ['eyebrow', 'title'] },
-  features: { label: 'Why choose us', fields: ['eyebrow', 'title'] },
-  testimonials: { label: 'Testimonials', fields: ['eyebrow', 'title'] },
-  clients: { label: 'Client logos', fields: ['eyebrow', 'title'] },
-  blog: { label: 'Latest blog posts', fields: ['eyebrow', 'title'] },
-  newsletter: { label: 'Newsletter signup', fields: ['title', 'text'] },
-  instagram: { label: 'Instagram grid', fields: ['eyebrow', 'title'] },
-  gallery: { label: 'Gallery', fields: ['eyebrow', 'title'] },
-  rich_text: { label: 'Custom HTML', fields: ['title', 'html'] },
-  page: { label: 'Custom page', note: 'Embeds a page from Pages.', fields: ['page'] },
-} as const satisfies Record<string, { label: string; note?: string; fields: readonly SectionField[] }>
+// ---------- homepage sections ----------
+// Like Shopify section schemas: every section type declares its own settings (content first),
+// and every section also gets SECTION_STYLE (colors, fonts, spacing, animation, visibility).
 
-export type SectionField = 'eyebrow' | 'title' | 'text' | 'button_label' | 'link' | 'html' | 'page'
+const t = (id: string, label: string, extra: Partial<ThemeSettingDef> = {}): ThemeSettingDef => ({ id, type: 'text', label, group: 'Content', ...extra })
+const HEADINGS = [t('eyebrow', 'Small heading'), t('title', 'Heading')]
+
+export const SECTION_TYPES = {
+  hero: {
+    label: 'Hero slider',
+    note: 'Slides are managed under Media. Text set here replaces the slide text; an image replaces the slider.',
+    schema: [
+      t('eyebrow', 'Small heading'), t('title', 'Heading'), t('text', 'Text', { type: 'textarea' }),
+      t('button_label', 'Button label'), t('link', 'Button link', { type: 'link' }),
+      t('image', 'Image', { type: 'image', help: 'Shows one fixed banner instead of the slides.' }),
+      { id: 'show_quote_button', type: 'checkbox', group: 'Content', label: 'Show “Get a Quote” button', default: true },
+      { id: 'height', type: 'range', group: 'Layout', label: 'Height', default: 560, min: 280, max: 900, step: 10, unit: 'px' },
+      { id: 'content_align', type: 'select', group: 'Layout', label: 'Text position', default: 'left', options: [{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }] },
+      { id: 'overlay', type: 'range', group: 'Layout', label: 'Image darkening', default: 85, min: 0, max: 100, step: 5, unit: '%' },
+      { id: 'autoplay', type: 'range', group: 'Layout', label: 'Change slide every', default: 5, min: 0, max: 15, step: 1, unit: 's', help: '0 turns autoplay off.' },
+    ],
+  },
+  trust_bar: {
+    label: 'Trust bar',
+    schema: [1, 2, 3, 4].flatMap((n) => [
+      t(`item_${n}_title`, `Item ${n} title`, { group: `Item ${n}` }), t(`item_${n}_text`, `Item ${n} text`, { group: `Item ${n}` }),
+    ]),
+  },
+  categories: { label: 'Categories', schema: HEADINGS },
+  featured: { label: 'Featured products', schema: HEADINGS },
+  banner: { label: 'Promo banner', schema: [...HEADINGS, t('text', 'Text', { type: 'textarea' }), t('button_label', 'Button label'), t('link', 'Button link', { type: 'link' })] },
+  collections: { label: 'Collections', schema: HEADINGS },
+  new_arrivals: { label: 'New arrivals', schema: HEADINGS },
+  best_sellers: { label: 'Best sellers', schema: HEADINGS },
+  on_sale: { label: 'On sale', schema: HEADINGS },
+  features: { label: 'Why choose us', schema: HEADINGS },
+  testimonials: { label: 'Testimonials', schema: HEADINGS },
+  clients: { label: 'Client logos', schema: HEADINGS },
+  blog: { label: 'Latest blog posts', schema: HEADINGS },
+  newsletter: { label: 'Newsletter signup', schema: [t('title', 'Heading'), t('text', 'Text', { type: 'textarea' })] },
+  instagram: { label: 'Instagram grid', schema: HEADINGS },
+  gallery: { label: 'Gallery', schema: HEADINGS },
+  rich_text: { label: 'Custom HTML', schema: [t('title', 'Heading'), t('html', 'HTML content', { type: 'html' })] },
+  page: { label: 'Custom page', note: 'Embeds a page from Pages.', schema: [t('page', 'Page', { type: 'page' })] },
+} satisfies Record<string, { label: string; note?: string; schema: ThemeSettingDef[] }>
+
 export type SectionType = keyof typeof SECTION_TYPES
+
+export const ANIMATIONS = [
+  { value: 'none', label: 'None' }, { value: 'fade', label: 'Fade in' }, { value: 'fade-up', label: 'Fade up' },
+  { value: 'fade-down', label: 'Fade down' }, { value: 'zoom', label: 'Zoom in' }, { value: 'slide-left', label: 'Slide from right' },
+  { value: 'slide-right', label: 'Slide from left' }, { value: 'blur', label: 'Blur in' },
+]
+
+/** Settings every section has. Empty values mean “use the theme’s”. */
+export const SECTION_STYLE: ThemeSettingDef[] = [
+  { id: 'bg_color', type: 'color', group: 'Colors', label: 'Background', default: '' },
+  { id: 'bg_image', type: 'image', group: 'Colors', label: 'Background image', default: '' },
+  { id: 'bg_overlay', type: 'range', group: 'Colors', label: 'Background image darkening', default: 0, min: 0, max: 90, step: 5, unit: '%' },
+  { id: 'text_color', type: 'color', group: 'Colors', label: 'Text', default: '' },
+  { id: 'heading_color', type: 'color', group: 'Colors', label: 'Headings', default: '' },
+  { id: 'accent_color', type: 'color', group: 'Colors', label: 'Accent (small headings, icons)', default: '' },
+  { id: 'heading_font', type: 'select', group: 'Typography', label: 'Heading font', default: '' },
+  { id: 'body_font', type: 'select', group: 'Typography', label: 'Text font', default: '' },
+  { id: 'heading_size', type: 'range', group: 'Typography', label: 'Heading size (0 = default)', default: 0, min: 0, max: 72, step: 1, unit: 'px' },
+  { id: 'text_align', type: 'select', group: 'Typography', label: 'Alignment', default: '', options: [{ value: '', label: 'Default' }, { value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }] },
+  { id: 'padding_top', type: 'range', group: 'Spacing', label: 'Extra space above', default: 0, min: 0, max: 160, step: 4, unit: 'px' },
+  { id: 'padding_bottom', type: 'range', group: 'Spacing', label: 'Extra space below', default: 0, min: 0, max: 160, step: 4, unit: 'px' },
+  { id: 'animation', type: 'select', group: 'Animation', label: 'Entrance animation', default: 'none', options: ANIMATIONS },
+  { id: 'animation_duration', type: 'range', group: 'Animation', label: 'Duration', default: 700, min: 200, max: 2000, step: 100, unit: 'ms' },
+  { id: 'animation_delay', type: 'range', group: 'Animation', label: 'Delay', default: 0, min: 0, max: 1500, step: 50, unit: 'ms' },
+  { id: 'hide_mobile', type: 'checkbox', group: 'Visibility', label: 'Hide on phones', default: false },
+  { id: 'hide_desktop', type: 'checkbox', group: 'Visibility', label: 'Hide on larger screens', default: false },
+  { id: 'css_class', type: 'text', group: 'Advanced', label: 'CSS class', default: '', help: 'Target this section from Custom CSS.' },
+]
+
+/** Full schema of a section type: its own settings, then the shared style settings. */
+export function sectionSchema(type: SectionType): ThemeSettingDef[] {
+  const fonts = [{ value: '', label: 'Theme default' }, ...FONT_OPTIONS]
+  return [...SECTION_TYPES[type].schema, ...SECTION_STYLE.map((d) => (d.id.endsWith('_font') ? { ...d, options: fonts } : d))]
+}
 
 export interface ThemeSection {
   id: string
   type: SectionType
   enabled: boolean
-  settings: Partial<Record<SectionField, string>>
+  settings: ThemeSettings
 }
 
 export interface MenuItem {

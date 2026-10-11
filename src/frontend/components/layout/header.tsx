@@ -58,7 +58,7 @@ export function Header() {
   const followLink = useFollowLink()
 
   return (
-    <header className="sticky top-0 z-40 bg-white shadow-sm">
+    <header data-section-id="@header" data-section-label="Header" className="sticky top-0 z-40 bg-white shadow-sm">
       {/* Top announcement bar */}
       <div className="bg-brand-teal-dark text-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-1.5 text-xs">

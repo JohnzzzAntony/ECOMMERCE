@@ -230,3 +230,32 @@
 .page-content blockquote { border-left: 4px solid var(--brand-teal); padding-left: 1em; color: var(--muted-foreground); }
 .page-content table { width: 100%; border-collapse: collapse; }
 .page-content th, .page-content td { border: 1px solid var(--border); padding: 0.5em 0.75em; text-align: left; }
+
+/* ---- Theme sections (see components/theme/section-frame.tsx) ---- */
+.theme-section { position: relative; }
+.theme-section.has-bg > :not(.theme-section) { background-color: transparent !important; }
+.theme-section.has-bg-image { background-size: cover; background-position: center; }
+.theme-section.has-bg-image::before { content: ""; position: absolute; inset: 0; background: rgb(0 0 0 / var(--sec-overlay, 0)); pointer-events: none; }
+.theme-section.has-bg-image > * { position: relative; }
+.theme-section.has-heading-color :is(h1, h2, h3, h4) { color: var(--sec-heading); }
+.theme-section.has-heading-size :is(h1, h2) { font-size: var(--sec-heading-size); line-height: 1.15; }
+.theme-section.has-align :is(h1, h2, h3, p) { text-align: inherit; }
+
+.sec-anim { transition: opacity var(--sec-dur) ease var(--sec-delay), transform var(--sec-dur) cubic-bezier(.2, .7, .2, 1) var(--sec-delay), filter var(--sec-dur) ease var(--sec-delay); }
+.sec-anim:not(.is-in) { opacity: 0; }
+.sec-anim[data-anim="fade-up"]:not(.is-in) { transform: translateY(40px); }
+.sec-anim[data-anim="fade-down"]:not(.is-in) { transform: translateY(-40px); }
+.sec-anim[data-anim="zoom"]:not(.is-in) { transform: scale(.92); }
+.sec-anim[data-anim="slide-left"]:not(.is-in) { transform: translateX(60px); }
+.sec-anim[data-anim="slide-right"]:not(.is-in) { transform: translateX(-60px); }
+.sec-anim[data-anim="blur"]:not(.is-in) { filter: blur(12px); }
+@media (prefers-reduced-motion: reduce) { .sec-anim { transition: none; opacity: 1 !important; transform: none !important; filter: none !important; } }
+
+/* Theme editor preview: hover and selection outlines with the section name. */
+html.theme-editing [data-section-id] { cursor: pointer; }
+html.theme-editing [data-section-id]:hover { outline: 2px dashed #2c6ecb; outline-offset: -2px; }
+html.theme-editing [data-section-id][data-editor-selected] { outline: 2px solid #2c6ecb; outline-offset: -2px; }
+html.theme-editing [data-section-id]:is(:hover, [data-editor-selected])::after {
+  content: attr(data-section-label); position: absolute; top: 0; left: 0; z-index: 60; padding: 2px 8px;
+  background: #2c6ecb; color: #fff; font: 600 11px/18px system-ui, sans-serif; pointer-events: none;
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, applyLangDir } from '@/frontend/store/use-store'
 import { Header } from '@/frontend/components/layout/header'
@@ -33,6 +33,7 @@ import { AdminView } from '@/frontend/views/admin'
 import { TrackOrderView } from '@/frontend/views/track-order-view'
 import { PageView } from '@/frontend/views/page-view'
 import { ThemeContext } from '@/frontend/lib/theme'
+import { useEditorDraft } from '@/frontend/components/theme/editor-bridge'
 import { styleText, themeVariablesCss, type StorefrontTheme } from '@/shared/theme'
 
 // Single-page storefront: the Zustand store's `view` decides which screen renders.
@@ -40,7 +41,10 @@ import { styleText, themeVariablesCss, type StorefrontTheme } from '@/shared/the
 export function StorefrontApp({ initialTheme, initialSettings }: { initialTheme?: StorefrontTheme | null; initialSettings?: Record<string, string> | null }) {
   const { view, params, lang, setSettings, compareList, toggleWishlist, navigate, pageHidesChrome } = useStore()
   const storeTheme = useStore((s) => s.theme)
-  const theme = storeTheme ?? initialTheme ?? null
+  const editorDraft = useEditorDraft()
+  const savedTheme = storeTheme ?? initialTheme ?? null
+  // Inside the admin theme editor, show the unsaved draft (menus stay those of the live store).
+  const theme = useMemo(() => (editorDraft && savedTheme ? { ...savedTheme, ...editorDraft } : savedTheme), [editorDraft, savedTheme])
 
   // Deep link to a custom page: /?page=<slug>
   useEffect(() => {

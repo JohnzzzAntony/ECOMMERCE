@@ -5,8 +5,8 @@ import { db } from './db'
 import { HttpError } from './auth'
 import { invalidateAll, memo } from './memo'
 import {
-  DEFAULT_MENUS, DEFAULT_SECTIONS, DEFAULT_THEME, MENU_HANDLES, mergeSchema, resolveSettings, SECTION_TYPES,
-  type MenuHandle, type MenuItem, type SectionField, type StorefrontTheme, type ThemeSection, type ThemeSettingDef,
+  DEFAULT_MENUS, DEFAULT_SECTIONS, DEFAULT_THEME, MENU_HANDLES, mergeSchema, resolveSettings, SECTION_TYPES, sectionSchema,
+  type MenuHandle, type MenuItem, type StorefrontTheme, type ThemeSection, type ThemeSettingDef,
   type ThemeSettings, type ThemeSettingType,
 } from '@/shared/theme'
 
@@ -16,7 +16,7 @@ function parse<T>(json: string, fallback: T): T {
 
 // ---------- validation (shared by package install and admin edits) ----------
 
-const SETTING_TYPES: ThemeSettingType[] = ['color', 'text', 'textarea', 'image', 'select', 'checkbox', 'range']
+const SETTING_TYPES: ThemeSettingType[] = ['color', 'text', 'textarea', 'image', 'select', 'checkbox', 'range', 'link', 'page', 'html']
 const ID = /^[a-z][a-z0-9_]{0,63}$/
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : undefined)
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -67,14 +67,18 @@ export function cleanSettings(input: unknown, schema: ThemeSettingDef[]): ThemeS
       case 'select':
         if (typeof value === 'string' && (!def.options?.length || def.options.some((o) => o.value === value))) out[key] = value
         break
+      case 'link':
+        if (typeof value === 'string' && !/^\s*(javascript|data|vbscript):/i.test(value)) out[key] = value.trim().slice(0, 500)
+        break
+      case 'html':
+        if (typeof value === 'string') out[key] = value.slice(0, 100_000)
+        break
       default:
         if (typeof value === 'string') out[key] = value.slice(0, def.type === 'textarea' ? 5000 : 1000)
     }
   }
   return out
 }
-
-const SECTION_FIELD_MAX: Record<SectionField, number> = { eyebrow: 120, title: 200, text: 1000, button_label: 60, link: 500, html: 100_000, page: 120 }
 
 export function cleanSections(input: unknown): ThemeSection[] {
   if (!Array.isArray(input)) return []
@@ -86,13 +90,7 @@ export function cleanSections(input: unknown): ThemeSection[] {
     let id = str(raw.id, 40) || `s-${type}-${i}`
     if (seen.has(id)) id = `${id}-${i}`
     seen.add(id)
-    const settings: ThemeSection['settings'] = {}
-    const given = isRecord(raw.settings) ? raw.settings : {}
-    for (const field of SECTION_TYPES[type].fields as readonly SectionField[]) {
-      const v = str(given[field], SECTION_FIELD_MAX[field])
-      if (v !== undefined) settings[field] = v
-    }
-    out.push({ id, type, enabled: raw.enabled !== false, settings })
+    out.push({ id, type, enabled: raw.enabled !== false, settings: cleanSettings(raw.settings, sectionSchema(type)) })
   }
   return out
 }

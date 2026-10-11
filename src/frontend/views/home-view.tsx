@@ -22,7 +22,8 @@ import { formatDate } from '@/frontend/lib/format'
 import { useFollowLink, useTheme } from '@/frontend/lib/theme'
 import { SafeHtml } from '@/frontend/components/theme/html-content'
 import { PageBody, usePage } from '@/frontend/views/page-view'
-import type { SectionField, SectionType, ThemeSection } from '@/shared/theme'
+import { resolveSettings, sectionSchema, type SectionType, type ThemeSection, type ThemeSettings } from '@/shared/theme'
+import { SectionFrame } from '@/frontend/components/theme/section-frame'
 import type {
   Product, Category, Collection, BlogPost, Testimonial,
   ClientLogo, HeroSlide, GalleryItem,
@@ -30,7 +31,7 @@ import type {
 
 // ---------- small helpers ----------
 
-type SectionSettings = Partial<Record<SectionField, string>>
+type SectionSettings = Record<string, string>
 
 function SectionHeading({
   sub,
@@ -80,15 +81,31 @@ function ProductGridSkeleton({ count = 4 }: { count?: number }) {
 
 // ---------- 1. Hero Slider ----------
 
-function HeroSlider({ slides }: { slides: HeroSlide[] }) {
+function HeroSlider({ slides: mediaSlides, settings }: { slides: HeroSlide[]; settings: ThemeSettings }) {
   const { navigate } = useStore()
+  const followLink = useFollowLink()
   const [current, setCurrent] = useState(0)
+  const text = (key: string) => (typeof settings[key] === 'string' ? (settings[key] as string) : '')
+
+  // A section image replaces the Media slides with one fixed banner.
+  const image = text('image')
+  const slides: HeroSlide[] = image
+    ? [{ id: 'section-image', imageUrl: image, title: null, subtitle: null, ctaLabel: null, ctaUrl: null, sortOrder: 0, isActive: true }]
+    : mediaSlides
+  const autoplay = Number(settings.autoplay ?? 5)
+  const height = `min(${Number(settings.height) || 560}px, 85vh)`
+  const align = settings.content_align === 'center' || settings.content_align === 'right' ? settings.content_align : 'left'
+  const shade = Math.max(0, Math.min(100, Number(settings.overlay ?? 85)))
+  const ink = (pct: number) => `color-mix(in srgb, var(--brand-ink) ${Math.round(pct)}%, transparent)`
+  const overlay = align === 'center'
+    ? ink(shade * 0.7)
+    : `linear-gradient(to ${align === 'left' ? 'right' : 'left'}, ${ink(shade)}, ${ink(shade * 0.6)}, transparent)`
 
   useEffect(() => {
-    if (slides.length <= 1) return
-    const t = setInterval(() => setCurrent((c) => (c + 1) % slides.length), 5000)
+    if (slides.length <= 1 || autoplay <= 0) return
+    const t = setInterval(() => setCurrent((c) => (c + 1) % slides.length), autoplay * 1000)
     return () => clearInterval(t)
-  }, [slides.length])
+  }, [slides.length, autoplay])
 
   const go = useCallback(
     (i: number) => setCurrent((i + slides.length) % slides.length),
@@ -97,18 +114,29 @@ function HeroSlider({ slides }: { slides: HeroSlide[] }) {
 
   if (slides.length === 0) {
     return (
-      <section className="relative w-full bg-brand-ink" style={{ height: 'min(560px, 70vh)' }}>
+      <section className="relative w-full bg-brand-ink" style={{ height }}>
         <Skeleton className="h-full w-full rounded-none" />
       </section>
     )
   }
 
-  const slide = slides[current]
+  const slide = slides[current % slides.length]
+  const eyebrow = text('eyebrow') || slide.subtitle
+  const title = text('title') || slide.title
+  const body = text('text')
+  const ctaLabel = text('button_label') || slide.ctaLabel
+  const onCta = () => {
+    if (text('link') && followLink(text('link'))) return
+    // Media slides set ctaUrl to a full URL or a storefront page name such as "offers".
+    const link = slide.ctaUrl?.trim().replace(/^\//, '') || 'products'
+    if (/^https?:\/\//i.test(slide.ctaUrl || '')) window.location.href = slide.ctaUrl!
+    else navigate(link as Parameters<typeof navigate>[0])
+  }
 
   return (
     <section
       className="relative w-full overflow-hidden bg-brand-ink"
-      style={{ height: 'min(560px, 70vh)' }}
+      style={{ height }}
       aria-roledescription="carousel"
       aria-label="Featured promotions"
     >
@@ -123,12 +151,14 @@ function HeroSlider({ slides }: { slides: HeroSlide[] }) {
             src={s.imageUrl}
             alt={s.title || ''}
             className="h-full w-full object-cover"
+            fetchPriority={i === 0 ? 'high' : undefined}
+            loading={i === 0 ? 'eager' : 'lazy'}
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-brand-ink/85 via-brand-ink/50 to-transparent" />
+          <div className="absolute inset-0" style={{ background: overlay }} />
         </div>
       ))}
 
-      <div className="relative z-10 mx-auto flex h-full max-w-7xl items-center px-4">
+      <div className={`relative z-10 mx-auto flex h-full max-w-7xl items-center px-4 ${align === 'center' ? 'justify-center text-center' : align === 'right' ? 'justify-end text-right' : ''}`}>
         <motion.div
           key={slide.id}
           initial={{ opacity: 0, y: 24 }}
@@ -136,40 +166,34 @@ function HeroSlider({ slides }: { slides: HeroSlide[] }) {
           transition={{ duration: 0.6, ease: 'easeOut' }}
           className="max-w-xl text-white"
         >
-          {slide.subtitle && (
+          {eyebrow && (
             <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-brand-cyan">
-              {slide.subtitle}
+              {eyebrow}
             </p>
           )}
-          {slide.title && (
+          {title && (
             <h1 className="text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
-              {slide.title}
+              {title}
             </h1>
           )}
-          <div className="mt-6 flex flex-wrap gap-3">
-            {slide.ctaLabel && (
-              <Button
-                size="lg"
-                onClick={() => {
-                  // Admin sets ctaUrl to a full URL or a storefront page name such as "offers".
-                  const link = slide.ctaUrl?.trim().replace(/^\//, '') || 'products'
-                  if (/^https?:\/\//i.test(slide.ctaUrl || '')) window.location.href = slide.ctaUrl!
-                  else navigate(link as Parameters<typeof navigate>[0])
-                }}
-                className="bg-brand-gold text-white hover:bg-brand-gold/90"
-              >
-                {slide.ctaLabel}
+          {body && <p className="mt-4 text-base text-white/85 sm:text-lg">{body}</p>}
+          <div className={`mt-6 flex flex-wrap gap-3 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : ''}`}>
+            {ctaLabel && (
+              <Button size="lg" onClick={onCta} className="bg-brand-gold text-white hover:bg-brand-gold/90">
+                {ctaLabel}
                 <ArrowRight size={16} />
               </Button>
             )}
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={() => navigate('contact')}
-              className="border-white/40 bg-white/10 text-white backdrop-blur hover:bg-white/20"
-            >
-              Get a Quote
-            </Button>
+            {settings.show_quote_button !== false && (
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={() => navigate('contact')}
+                className="border-white/40 bg-white/10 text-white backdrop-blur hover:bg-white/20"
+              >
+                Get a Quote
+              </Button>
+            )}
           </div>
         </motion.div>
       </div>
@@ -210,13 +234,13 @@ function HeroSlider({ slides }: { slides: HeroSlide[] }) {
 
 // ---------- 2. Trust Bar ----------
 
-function TrustBar() {
+function TrustBar({ s }: { s: SectionSettings }) {
   const items = [
     { icon: Truck, title: 'Fast Delivery', desc: 'Across UAE & GCC' },
     { icon: ShieldCheck, title: 'Secure Payment', desc: '100% protected' },
     { icon: Headphones, title: '24/7 Support', desc: 'Dedicated help' },
     { icon: BadgeCheck, title: 'ISO Certified', desc: 'Quality assured' },
-  ]
+  ].map((it, i) => ({ ...it, title: s[`item_${i + 1}_title`] || it.title, desc: s[`item_${i + 1}_text`] || it.desc }))
   return (
     <section className="border-b border-border bg-white">
       <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 px-4 py-8 sm:grid-cols-4 sm:py-6">
@@ -1148,10 +1172,17 @@ type HomeData = {
 }
 
 function HomeSection({ section, data, fullHeight }: { section: ThemeSection; data: HomeData; fullHeight: boolean }) {
-  const s = section.settings
-  switch (section.type) {
-    case 'hero': return <HeroSlider slides={data.slider} />
-    case 'trust_bar': return <TrustBar />
+  const settings = useMemo(() => resolveSettings(sectionSchema(section.type), section.settings), [section])
+  const content = sectionContent(section.type, settings, data, fullHeight)
+  if (!content) return null
+  return <SectionFrame section={section} settings={settings}>{content}</SectionFrame>
+}
+
+function sectionContent(type: SectionType, settings: ThemeSettings, data: HomeData, fullHeight: boolean) {
+  const s: SectionSettings = Object.fromEntries(Object.entries(settings).map(([k, v]) => [k, String(v)]))
+  switch (type) {
+    case 'hero': return <HeroSlider slides={data.slider} settings={settings} />
+    case 'trust_bar': return <TrustBar s={s} />
     case 'categories': return <CategoriesSection categories={data.categories} s={s} />
     // Product rows with nothing to show are hidden instead of showing placeholders.
     case 'featured': return data.featured.length ? <FeaturedProducts products={data.featured} s={s} /> : null
