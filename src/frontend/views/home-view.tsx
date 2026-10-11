@@ -22,7 +22,7 @@ import { formatDate } from '@/frontend/lib/format'
 import { useFollowLink, useTheme } from '@/frontend/lib/theme'
 import { SafeHtml } from '@/frontend/components/theme/html-content'
 import { PageBody, usePage } from '@/frontend/views/page-view'
-import { resolveSettings, sectionSchema, type SectionType, type ThemeSection, type ThemeSettings } from '@/shared/theme'
+import { LINK_GRID_TILES, resolveSettings, sectionSchema, type SectionType, type ThemeSection, type ThemeSettings } from '@/shared/theme'
 import { SectionFrame } from '@/frontend/components/theme/section-frame'
 import type {
   Product, Category, Collection, BlogPost, Testimonial,
@@ -158,31 +158,28 @@ function HeroSlider({ slides: mediaSlides, settings }: { slides: HeroSlide[]; se
         </div>
       ))}
 
-      <div className={`relative z-10 mx-auto flex h-full max-w-7xl items-center px-4 ${align === 'center' ? 'justify-center text-center' : align === 'right' ? 'justify-end text-right' : ''}`}>
+      <div className={`relative z-10 mx-auto flex h-full max-w-[1600px] items-end px-6 pb-16 sm:px-10 sm:pb-20 ${align === 'center' ? 'justify-center text-center' : align === 'right' ? 'justify-end text-right' : ''}`}>
         <motion.div
           key={slide.id}
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="max-w-xl text-white"
+          className="max-w-3xl text-white"
         >
           {eyebrow && (
-            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-brand-cyan">
+            <p className="mb-3 text-sm text-white/90">
               {eyebrow}
             </p>
           )}
           {title && (
-            <h1 className="text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
+            <h1 className="text-4xl leading-[1.05] sm:text-6xl lg:text-7xl">
               {title}
             </h1>
           )}
           {body && <p className="mt-4 text-base text-white/85 sm:text-lg">{body}</p>}
           <div className={`mt-6 flex flex-wrap gap-3 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : ''}`}>
             {ctaLabel && (
-              <Button size="lg" onClick={onCta} className="bg-brand-gold text-white hover:bg-brand-gold/90">
-                {ctaLabel}
-                <ArrowRight size={16} />
-              </Button>
+              <button onClick={onCta} className="btn-outline on-image">{ctaLabel}</button>
             )}
             {settings.show_quote_button !== false && (
               <Button
@@ -1058,6 +1055,120 @@ function GallerySection({ gallery, s }: { gallery: GalleryItem[]; s: SectionSett
   )
 }
 
+// ---------- Editorial sections (DESIGN.md) ----------
+
+/** Full-width photo with a large serif heading and an outlined button. */
+function ImageBanner({ s }: { s: SectionSettings }) {
+  const followLink = useFollowLink()
+  const align = s.content_align === 'center' || s.content_align === 'right' ? s.content_align : 'left'
+  const vertical = s.content_vertical === 'top' ? 'items-start' : s.content_vertical === 'center' ? 'items-center' : 'items-end'
+  const shade = Math.max(0, Math.min(90, Number(s.overlay) || 0)) / 100
+  return (
+    <section className={s.full_width === 'false' ? 'mx-auto max-w-7xl px-4 py-6' : ''}>
+      <div className="relative w-full overflow-hidden bg-brand-ink" style={{ height: `min(${Number(s.height) || 640}px, 90vh)` }}>
+        {s.image && (
+          <picture>
+            {s.mobile_image && <source media="(max-width: 639px)" srcSet={s.mobile_image} />}
+            <img src={s.image} alt={s.title || ''} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+          </picture>
+        )}
+        <div className="absolute inset-0" style={{ background: `linear-gradient(to top, rgb(0 0 0 / ${shade}), rgb(0 0 0 / ${shade * 0.4}))` }} />
+        <div className={`relative mx-auto flex h-full max-w-[1600px] px-6 py-12 sm:px-10 sm:py-16 ${vertical} ${align === 'center' ? 'justify-center text-center' : align === 'right' ? 'justify-end text-right' : ''}`}>
+          <div className="max-w-3xl text-white">
+            {s.eyebrow && <p className="mb-3 text-sm">{s.eyebrow}</p>}
+            {s.title && <h2 className="text-4xl leading-[1.05] sm:text-6xl lg:text-7xl">{s.title}</h2>}
+            {s.text && <p className="mt-4 max-w-xl text-base text-white/85 sm:text-lg">{s.text}</p>}
+            {s.button_label && (
+              <button onClick={() => followLink(s.link || 'view:products')} className="btn-outline on-image mt-8">{s.button_label}</button>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** Large photo beside a heading, short copy and an underlined link. */
+function SplitFeature({ s }: { s: SectionSettings }) {
+  const followLink = useFollowLink()
+  const imageRight = s.image_side === 'right'
+  return (
+    <section className="py-12 sm:py-20">
+      <div className="mx-auto grid max-w-[1600px] items-center gap-8 px-4 sm:px-8 md:grid-cols-2 md:gap-16">
+        <div className={`overflow-hidden bg-secondary ${imageRight ? 'md:order-2' : ''}`} style={{ aspectRatio: s.image_ratio || '4/5' }}>
+          {s.image && <img src={s.image} alt={s.title || ''} className="h-full w-full object-cover" loading="lazy" />}
+        </div>
+        <div className="max-w-lg">
+          {s.eyebrow && <p className="mb-3 text-sm text-muted-foreground">{s.eyebrow}</p>}
+          {s.title && <h2 className="text-3xl leading-tight text-brand-ink sm:text-5xl">{s.title}</h2>}
+          {s.text && <p className="mt-5 whitespace-pre-line text-base leading-relaxed text-brand-ink/80">{s.text}</p>}
+          {s.button_label && <button onClick={() => followLink(s.link || 'view:products')} className="text-link mt-8 text-brand-ink">{s.button_label}</button>}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** Up to LINK_GRID_TILES configured links; falls back to the store categories when none are set. */
+function LinkGrid({ s, categories }: { s: SectionSettings; categories: Category[] }) {
+  const followLink = useFollowLink()
+  const configured = Array.from({ length: LINK_GRID_TILES }, (_, i) => i + 1)
+    .map((n) => ({ label: s[`tile_${n}_label`], link: s[`tile_${n}_link`], image: s[`tile_${n}_image`] }))
+    .filter((tile) => tile.label)
+  const tiles = configured.length
+    ? configured
+    : categories.map((c) => ({ label: c.name, link: `category:${c.slug}`, image: c.imageUrl ?? '' }))
+  if (!tiles.length) return null
+  const cols = Math.max(2, Math.min(6, Number(s.columns) || 4))
+  const images = s.style === 'tiles'
+  return (
+    <section className="py-12 sm:py-16">
+      <div className="mx-auto max-w-[1600px] px-4 sm:px-8">
+        {s.eyebrow && <p className="mb-2 text-sm text-muted-foreground">{s.eyebrow}</p>}
+        {s.title && <h2 className="mb-8 text-3xl text-brand-ink sm:text-4xl">{s.title}</h2>}
+        <div
+          className={`grid grid-cols-2 lg:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))] ${images ? 'gap-4' : 'gap-x-6 gap-y-3'}`}
+          style={{ '--cols': cols } as React.CSSProperties}
+        >
+          {tiles.map((tile, i) => (
+            <button key={`${tile.label}-${i}`} onClick={() => followLink(tile.link)} className="group text-left">
+              {images && (
+                <div className="mb-3 aspect-[3/4] overflow-hidden bg-secondary">
+                  {tile.image && <img src={tile.image} alt="" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />}
+                </div>
+              )}
+              <span className="text-base font-semibold text-brand-ink underline-offset-4 group-hover:underline">{tile.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** Horizontally scrolling product row with a heading and a text link. */
+function ProductSlider({ products, s }: { products: Product[]; s: SectionSettings }) {
+  const followLink = useFollowLink()
+  if (!products.length) return null
+  const perView = Math.max(2, Math.min(6, Number(s.per_view) || 4))
+  return (
+    <section className="py-10 sm:py-14">
+      <div className="mx-auto max-w-[1600px] px-4 sm:px-8">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            {s.eyebrow && <p className="mb-1 text-sm text-muted-foreground">{s.eyebrow}</p>}
+            {s.title && <h2 className="text-3xl text-brand-ink sm:text-4xl">{s.title}</h2>}
+          </div>
+          {s.link_label && <button onClick={() => followLink(s.link || 'view:products')} className="text-link shrink-0 text-brand-ink">{s.link_label}</button>}
+        </div>
+        <div className="scroll-row" style={{ '--per-view': perView + 0.3 } as React.CSSProperties}>
+          {products.map((p) => <ProductCard key={p.id} product={p} />)}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ---------- Main HomeView ----------
 
 export function HomeView() {
@@ -1090,7 +1201,9 @@ export function HomeView() {
 
   const { sections, settings } = useTheme()
   // Only load what the enabled sections show (an imported template homepage needs none of it).
-  const needed = useMemo(() => [...new Set(sections.filter((sec) => sec.enabled).map((sec) => sec.type))].sort().join(','), [sections])
+  const needed = useMemo(() => [...new Set(sections.filter((sec) => sec.enabled).map((sec) => (
+    sec.type === 'product_slider' ? String(sec.settings.source || 'new_arrivals') : sec.type
+  )))].sort().join(','), [sections])
 
   useEffect(() => {
     let cancelled = false
@@ -1100,11 +1213,11 @@ export function HomeView() {
     const noProducts = { products: [] as Product[] }
     Promise.all([
       has('hero') ? api.slider().catch(() => [] as HeroSlide[]) : none([] as HeroSlide[]),
-      has('categories') ? api.categories().catch(() => [] as Category[]) : none([] as Category[]),
+      has('categories', 'link_grid') ? api.categories().catch(() => [] as Category[]) : none([] as Category[]),
       has('featured') ? api.products({ featured: '1', limit: '8' }).catch(() => noProducts) : none(noProducts),
       has('on_sale') ? api.products({ on_sale: '1', limit: '8' }).catch(() => noProducts) : none(noProducts),
-      has('new_arrivals') ? api.products({ sort: 'newest', limit: '4' }).catch(() => noProducts) : none(noProducts),
-      has('best_sellers') ? api.products({ sort: 'rating', limit: '4' }).catch(() => noProducts) : none(noProducts),
+      has('new_arrivals') ? api.products({ sort: 'newest', limit: '10' }).catch(() => noProducts) : none(noProducts),
+      has('best_sellers') ? api.products({ sort: 'rating', limit: '10' }).catch(() => noProducts) : none(noProducts),
       has('collections') ? api.collections().catch(() => [] as Collection[]) : none([] as Collection[]),
       has('testimonials') ? api.testimonials().catch(() => [] as Testimonial[]) : none([] as Testimonial[]),
       has('clients') ? api.clients().catch(() => [] as ClientLogo[]) : none([] as ClientLogo[]),
@@ -1163,7 +1276,7 @@ export function HomeView() {
 
 // ---------- Theme-driven sections ----------
 
-const DATA_SECTIONS = new Set<SectionType>(['categories', 'featured', 'collections', 'new_arrivals', 'best_sellers', 'on_sale', 'testimonials', 'clients', 'blog', 'instagram', 'gallery'])
+const DATA_SECTIONS = new Set<SectionType>(['product_slider', 'link_grid', 'categories', 'featured', 'collections', 'new_arrivals', 'best_sellers', 'on_sale', 'testimonials', 'clients', 'blog', 'instagram', 'gallery'])
 
 type HomeData = {
   slider: HeroSlide[]; categories: Category[]; featured: Product[]; onSale: Product[]; newArrivals: Product[]
@@ -1198,6 +1311,13 @@ function sectionContent(type: SectionType, settings: ThemeSettings, data: HomeDa
     case 'newsletter': return <NewsletterSection s={s} />
     case 'instagram': return <InstagramSection gallery={data.gallery} s={s} />
     case 'gallery': return <GallerySection gallery={data.gallery} s={s} />
+    case 'image_banner': return <ImageBanner s={s} />
+    case 'split_feature': return <SplitFeature s={s} />
+    case 'link_grid': return <LinkGrid s={s} categories={data.categories} />
+    case 'product_slider': {
+      const lists = { new_arrivals: data.newArrivals, best_sellers: data.bestSellers, featured: data.featured, on_sale: data.onSale }
+      return <ProductSlider s={s} products={lists[s.source as keyof typeof lists] ?? data.newArrivals} />
+    }
     case 'rich_text':
       return (
         <section className="bg-background py-12 sm:py-16">

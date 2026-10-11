@@ -144,3 +144,18 @@ test('section settings are validated against the section schema', () => {
   expect(html.settings.animation).toBeUndefined()
   expect(sectionSchema('banner').map((d) => d.id)).toContain('padding_top')
 })
+
+test('editorial sections keep their content settings and drop invalid ones', () => {
+  const [banner, slider, grid] = cleanSections([
+    { type: 'image_banner', settings: { image: 'https://cdn.test/a.jpg', title: 'Hi', content_vertical: 'middle', overlay: 500, link: 'javascript:alert(1)' } },
+    { type: 'product_slider', settings: { source: 'on_sale', per_view: 9 } },
+    { type: 'link_grid', settings: { tile_1_label: 'Chairs', tile_1_link: 'category:chairs', tile_9_label: 'nope' } },
+  ])
+  expect(banner.settings).toEqual({ image: 'https://cdn.test/a.jpg', title: 'Hi', overlay: 90 })
+  expect(slider.settings).toEqual({ source: 'on_sale', per_view: 6 })
+  expect(grid.settings).toEqual({ tile_1_label: 'Chairs', tile_1_link: 'category:chairs' })
+})
+
+test('heading weight setting is emitted as a CSS variable', () => {
+  expect(themeVariablesCss(CORE_SETTINGS, { heading_weight: 500 })).toBe(':root{--theme-heading-weight:500}')
+})

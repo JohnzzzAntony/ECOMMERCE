@@ -2,7 +2,7 @@
 
 import { sizedImage } from '@/frontend/lib/image'
 import { useEffect, useState } from 'react'
-import { Search, Heart, ShoppingCart, User, Menu, Instagram, Facebook, MessageCircle, Phone, Mail, Globe, Clock, ArrowUpRight } from 'lucide-react'
+import { Search, Heart, ShoppingCart, User, Menu, Instagram, Facebook, MessageCircle, Phone, Mail, Globe, Clock, ArrowUpRight, X } from 'lucide-react'
 import { useStore } from '@/frontend/store/use-store'
 import { api } from '@/frontend/lib/api'
 import { NotificationBell } from '@/frontend/components/layout/notification-bell'
@@ -15,44 +15,160 @@ import { NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMe
 import { settingText, useFollowLink, useTheme } from '@/frontend/lib/theme'
 import { resolveLink, type MenuItem } from '@/shared/theme'
 
+type Catalog = { categories: Category[]; brands: Brand[]; collections: Collection[] }
+
+/** Theme setting `header_style` picks the layout; both share the catalog used by the mega menus. */
 export function Header() {
-  const { navigate, lang, toggleLang, cartCount, wishlist, user, view, setMobileMenuOpen, mobileMenuOpen, setCartDrawerOpen, recentSearches, addRecentSearch, clearRecentSearches } = useStore()
-  const [categories, setCategories] = useState<Category[]>([])
-  const [brands, setBrands] = useState<Brand[]>([])
-  const [collections, setCollections] = useState<Collection[]>([])
-  const [searchValue, setSearchValue] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
-  const [showSearch, setShowSearch] = useState(false)
+  const { settings } = useTheme()
+  const [catalog, setCatalog] = useState<Catalog>({ categories: [], brands: [], collections: [] })
 
   useEffect(() => {
-    Promise.all([api.categories(), api.brands(), api.collections()]).then(([c, b, col]) => {
-      setCategories(c); setBrands(b); setCollections(col)
+    Promise.all([api.categories(), api.brands(), api.collections()]).then(([categories, brands, collections]) => {
+      setCatalog({ categories, brands, collections })
     })
   }, [])
 
-  const handleSearch = async (val: string) => {
-    setSearchValue(val)
-    if (val.length > 1) {
-      const { products } = await api.products({ search: val, limit: '5' })
-      setSearchResults(products)
-      setShowSearch(true)
-    } else {
-      setSearchResults([])
-      // Show recent searches when input is focused but empty
-      setShowSearch(true)
-    }
-  }
+  return settings.header_style === 'classic' ? <ClassicHeader {...catalog} /> : <EditorialHeader {...catalog} />
+}
 
-  const submitSearch = (q?: string) => {
-    const query = (q ?? searchValue).trim()
-    if (query) {
-      addRecentSearch(query)
-      navigate('products-search', { query })
-      setShowSearch(false)
-      setSearchValue('')
-    }
-  }
+// ---------- Editorial header (DESIGN.md) ----------
 
+/** Announcement messages are separated by "|" and rotate. */
+function Announcement({ text, className }: { text: string; className?: string }) {
+  const messages = text.split('|').map((m) => m.trim()).filter(Boolean)
+  const [index, setIndex] = useState(0)
+  useEffect(() => {
+    if (messages.length < 2) return
+    const t = setInterval(() => setIndex((i) => (i + 1) % messages.length), 4500)
+    return () => clearInterval(t)
+  }, [messages.length])
+  if (!messages.length) return null
+  return (
+    <div className={cn('px-4 py-2 text-center text-xs sm:text-[13px]', className)}>
+      <span key={index} className="announce-in inline-block">{messages[index % messages.length]}</span>
+    </div>
+  )
+}
+
+function EditorialHeader(catalog: Catalog) {
+  const { navigate, cartCount, wishlist, user, view, setMobileMenuOpen, mobileMenuOpen, setCartDrawerOpen } = useStore()
+  const { settings: theme, menus, sections } = useTheme()
+  const followLink = useFollowLink()
+  const [scrolled, setScrolled] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  // Transparent over the homepage's first section when that section is a full-width photo.
+  const first = sections.find((sec) => sec.enabled)
+  const overlayCapable = view === 'home' && theme.header_transparent === true && (first?.type === 'hero' || first?.type === 'image_banner')
+  useEffect(() => {
+    if (!overlayCapable) return
+    const onScroll = () => setScrolled(window.scrollY > 40)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [overlayCapable])
+  const clear = overlayCapable && !scrolled && !searchOpen && !mobileMenuOpen
+
+  const icon = 'relative flex h-10 w-10 items-center justify-center transition-opacity hover:opacity-70'
+  const count = 'absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold'
+
+  return (
+    <header
+      data-section-id="@header"
+      data-section-label="Header"
+      className={cn(
+        'top-0 z-40 w-full transition-colors duration-300',
+        overlayCapable ? 'fixed inset-x-0' : 'sticky',
+        clear ? 'bg-transparent text-white' : 'border-b border-border bg-background text-brand-ink',
+      )}
+    >
+      {theme.show_announcement === true && (
+        <Announcement text={settingText(theme.announcement_text)} className={clear ? 'bg-black/20' : 'bg-secondary'} />
+      )}
+
+      <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-4 px-4 sm:px-8 lg:h-20">
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <button className={cn(icon, '-ml-2 lg:hidden')} aria-label="Open menu"><Menu size={22} strokeWidth={1.5} /></button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[320px] overflow-y-auto">
+            <SheetHeader><SheetTitle className="text-left">Menu</SheetTitle></SheetHeader>
+            <MobileMenu items={menus.main} {...catalog} />
+          </SheetContent>
+        </Sheet>
+
+        <button onClick={() => navigate('home')} className="flex shrink-0 items-center" aria-label="Home">
+          <StoreLogo dark={clear} />
+        </button>
+
+        <nav className="hidden flex-1 justify-center lg:flex">
+          <NavigationMenu>
+            <NavigationMenuList>
+              {menus.main.map((item) => {
+                const target = resolveLink(item.link)
+                const link = cn('bg-transparent px-3 py-2 text-[15px] font-normal transition-opacity hover:bg-transparent hover:opacity-70 focus:bg-transparent data-[state=open]:bg-transparent', clear ? 'text-white hover:text-white focus:text-white data-[state=open]:text-white' : 'text-brand-ink')
+                if (target.kind === 'mega' || item.children?.length) {
+                  return (
+                    <NavigationMenuItem key={item.id}>
+                      <NavigationMenuTrigger className={link}>{item.label}</NavigationMenuTrigger>
+                      <NavigationMenuContent>
+                        {target.kind === 'mega'
+                          ? <MegaMenu source={target.source} {...catalog} />
+                          : (
+                            <div className="grid w-[260px] gap-1 p-3">
+                              {item.children!.map((child) => (
+                                <button key={child.id} onClick={() => followLink(child.link)} className="px-3 py-2 text-left text-sm hover:underline">{child.label}</button>
+                              ))}
+                            </div>
+                          )}
+                      </NavigationMenuContent>
+                    </NavigationMenuItem>
+                  )
+                }
+                const active = target.kind === 'view' && target.view === view && !target.params
+                return (
+                  <NavigationMenuItem key={item.id}>
+                    <button onClick={() => followLink(item.link)} className={cn(link, active && 'underline underline-offset-8')}>{item.label}</button>
+                  </NavigationMenuItem>
+                )
+              })}
+            </NavigationMenuList>
+          </NavigationMenu>
+        </nav>
+
+        <div className="ml-auto flex items-center lg:ml-0">
+          <button onClick={() => setSearchOpen((o) => !o)} className={icon} aria-label="Search" aria-expanded={searchOpen}>
+            {searchOpen ? <X size={20} strokeWidth={1.5} /> : <Search size={20} strokeWidth={1.5} />}
+          </button>
+          <button onClick={() => navigate(user ? 'profile' : 'login')} className={cn(icon, 'hidden sm:flex')} aria-label={user ? 'Account' : 'Login'}>
+            <User size={20} strokeWidth={1.5} />
+          </button>
+          <button onClick={() => navigate('wishlist')} className={icon} aria-label="Wishlist">
+            <Heart size={20} strokeWidth={1.5} />
+            {wishlist.length > 0 && <span className={cn(count, clear ? 'bg-white text-brand-ink' : 'bg-brand-ink text-background')}>{wishlist.length}</span>}
+          </button>
+          <button onClick={() => setCartDrawerOpen(true)} className={icon} aria-label="Cart">
+            <ShoppingCart size={20} strokeWidth={1.5} />
+            {cartCount() > 0 && <span className={cn(count, clear ? 'bg-white text-brand-ink' : 'bg-brand-ink text-background')}>{cartCount()}</span>}
+          </button>
+        </div>
+      </div>
+
+      {searchOpen && (
+        <div className="border-t border-border bg-background text-brand-ink">
+          <div className="mx-auto max-w-3xl px-4 py-6">
+            <HeaderSearch className="w-full" editorial onDone={() => setSearchOpen(false)} />
+          </div>
+        </div>
+      )}
+    </header>
+  )
+}
+
+// ---------- Classic header ----------
+
+function ClassicHeader(catalog: Catalog) {
+  const { navigate, lang, toggleLang, cartCount, wishlist, user, view, setMobileMenuOpen, mobileMenuOpen, setCartDrawerOpen } = useStore()
   const { settings: theme, menus } = useTheme()
   const settings = useStore((s) => s.settings)
   const followLink = useFollowLink()
@@ -63,8 +179,7 @@ export function Header() {
       <div className="bg-brand-teal-dark text-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-1.5 text-xs">
           <div className="flex items-center gap-2">
-            <span className="hidden sm:inline">📦</span>
-            <span>{theme.show_announcement ? settingText(theme.announcement_text) : ''}</span>
+            <span>{theme.show_announcement ? settingText(theme.announcement_text).split('|')[0].trim() : ''}</span>
           </div>
           <div className="flex items-center gap-3">
             <a href="https://instagram.com" target="_blank" rel="noreferrer" className="hidden hover:text-brand-cyan sm:inline" aria-label="Instagram">
@@ -102,7 +217,7 @@ export function Header() {
               <SheetHeader>
                 <SheetTitle className="text-left">Menu</SheetTitle>
               </SheetHeader>
-              <MobileMenu items={menus.main} categories={categories} brands={brands} collections={collections} />
+              <MobileMenu items={menus.main} {...catalog} />
             </SheetContent>
           </Sheet>
 
@@ -111,70 +226,7 @@ export function Header() {
             <StoreLogo />
           </button>
 
-          {/* Search */}
-          <div className="relative flex-1 max-w-2xl">
-            <div className="flex items-center rounded-lg border border-input bg-secondary px-3 py-2 focus-within:border-brand-teal focus-within:bg-white transition-colors">
-              <Search size={16} className="text-muted-foreground" />
-              <input
-                type="text"
-                value={searchValue}
-                onChange={(e) => handleSearch(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && submitSearch()}
-                onFocus={() => setShowSearch(true)}
-                onBlur={() => setTimeout(() => setShowSearch(false), 200)}
-                placeholder="Search for medical equipment, brands..."
-                className="ml-2 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              />
-              <button onClick={() => submitSearch()} className="ml-2 rounded-md bg-brand-teal px-3 py-1 text-xs font-semibold text-white hover:bg-brand-teal-dark">
-                Search
-              </button>
-            </div>
-            {showSearch && searchResults.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-96 overflow-y-auto rounded-lg border border-border bg-white shadow-lg scrollbar-thin">
-                {searchResults.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => { navigate('product-detail', { slug: p.slug }); setShowSearch(false); setSearchValue('') }}
-                    className="flex w-full items-center gap-3 border-b border-border p-2 text-left last:border-0 hover:bg-secondary"
-                  >
-                    {p.images?.[0] && (
-                      <img src={sizedImage(p.images[0].imageUrl, 120)} alt="" className="h-12 w-12 rounded object-cover" loading="lazy" />
-                    )}
-                    <div className="flex-1">
-                      <div className="line-clamp-1 text-sm font-medium">{p.name}</div>
-                      <div className="text-xs text-brand-teal">{p.onSale && p.salePrice ? `${p.salePrice} AED` : `${p.regularPrice} AED`}</div>
-                    </div>
-                  </button>
-                ))}
-                <button
-                  onClick={() => submitSearch()}
-                  className="w-full bg-secondary p-2 text-center text-xs font-semibold text-brand-teal hover:bg-accent"
-                >
-                  View all results →
-                </button>
-              </div>
-            )}
-            {/* Recent searches when no results */}
-            {showSearch && searchResults.length === 0 && !searchValue && recentSearches.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-border bg-white shadow-lg">
-                <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent Searches</span>
-                  <button onClick={clearRecentSearches} className="text-[10px] font-medium text-brand-teal hover:underline">Clear</button>
-                </div>
-                {recentSearches.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => submitSearch(q)}
-                    className="flex w-full items-center gap-2 border-b border-border p-2 text-left text-sm last:border-0 hover:bg-secondary"
-                  >
-                    <Clock size={13} className="text-muted-foreground" />
-                    <span className="flex-1">{q}</span>
-                    <ArrowUpRight size={13} className="text-muted-foreground" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <HeaderSearch />
 
           {/* Action icons */}
           <div className="flex items-center gap-1 sm:gap-2">
@@ -232,7 +284,7 @@ export function Header() {
                       </NavigationMenuTrigger>
                       <NavigationMenuContent>
                         {target.kind === 'mega'
-                          ? <MegaMenu source={target.source} categories={categories} brands={brands} collections={collections} />
+                          ? <MegaMenu source={target.source} {...catalog} />
                           : (
                             <div className="grid w-[260px] gap-1 p-3">
                               {item.children!.map((child) => (
@@ -269,17 +321,117 @@ export function Header() {
   )
 }
 
-/** Store logo: uploaded image, or initials + name + tagline from the theme settings. */
+/** Product search with live results and recent searches. */
+function HeaderSearch({ className = 'flex-1 max-w-2xl', editorial = false, onDone }: { className?: string; editorial?: boolean; onDone?: () => void }) {
+  const { navigate, recentSearches, addRecentSearch, clearRecentSearches } = useStore()
+  const [searchValue, setSearchValue] = useState('')
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [showSearch, setShowSearch] = useState(false)
+
+  const handleSearch = async (val: string) => {
+    setSearchValue(val)
+    if (val.length > 1) {
+      const { products } = await api.products({ search: val, limit: '5' })
+      setSearchResults(products)
+      setShowSearch(true)
+    } else {
+      setSearchResults([])
+      // Show recent searches when input is focused but empty
+      setShowSearch(true)
+    }
+  }
+
+  const done = () => { setShowSearch(false); setSearchValue(''); onDone?.() }
+
+  const submitSearch = (q?: string) => {
+    const query = (q ?? searchValue).trim()
+    if (query) {
+      addRecentSearch(query)
+      navigate('products-search', { query })
+      done()
+    }
+  }
+
+  return (
+    <div className={cn('relative', className)}>
+      <div className={cn('flex items-center', editorial ? 'border-b border-current py-2' : 'rounded-lg border border-input bg-secondary px-3 py-2 transition-colors focus-within:border-brand-teal focus-within:bg-white')}>
+        <Search size={16} className="text-muted-foreground" />
+        <input
+          type="text"
+          value={searchValue}
+          onChange={(e) => handleSearch(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submitSearch()}
+          onFocus={() => setShowSearch(true)}
+          onBlur={() => setTimeout(() => setShowSearch(false), 200)}
+          autoFocus={editorial}
+          placeholder={editorial ? 'Search products, brands…' : 'Search for medical equipment, brands...'}
+          className={cn('ml-2 w-full bg-transparent outline-none placeholder:text-muted-foreground', editorial ? 'text-lg' : 'text-sm')}
+        />
+        <button onClick={() => submitSearch()} className={cn('ml-2 px-3 py-1 text-xs font-semibold', editorial ? 'underline underline-offset-4' : 'rounded-md bg-brand-teal text-white hover:bg-brand-teal-dark')}>
+          Search
+        </button>
+      </div>
+      {showSearch && searchResults.length > 0 && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-96 overflow-y-auto rounded-lg border border-border bg-white shadow-lg scrollbar-thin">
+          {searchResults.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => { navigate('product-detail', { slug: p.slug }); done() }}
+              className="flex w-full items-center gap-3 border-b border-border p-2 text-left last:border-0 hover:bg-secondary"
+            >
+              {p.images?.[0] && (
+                <img src={sizedImage(p.images[0].imageUrl, 120)} alt="" className="h-12 w-12 rounded object-cover" loading="lazy" />
+              )}
+              <div className="flex-1">
+                <div className="line-clamp-1 text-sm font-medium">{p.name}</div>
+                <div className="text-xs text-brand-teal">{p.onSale && p.salePrice ? `${p.salePrice} AED` : `${p.regularPrice} AED`}</div>
+              </div>
+            </button>
+          ))}
+          <button
+            onClick={() => submitSearch()}
+            className="w-full bg-secondary p-2 text-center text-xs font-semibold text-brand-teal hover:bg-accent"
+          >
+            View all results →
+          </button>
+        </div>
+      )}
+      {/* Recent searches when no results */}
+      {showSearch && searchResults.length === 0 && !searchValue && recentSearches.length > 0 && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-border bg-white shadow-lg">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent Searches</span>
+            <button onClick={clearRecentSearches} className="text-[10px] font-medium text-brand-teal hover:underline">Clear</button>
+          </div>
+          {recentSearches.map((q) => (
+            <button
+              key={q}
+              onClick={() => submitSearch(q)}
+              className="flex w-full items-center gap-2 border-b border-border p-2 text-left text-sm last:border-0 hover:bg-secondary"
+            >
+              <Clock size={13} className="text-muted-foreground" />
+              <span className="flex-1">{q}</span>
+              <ArrowUpRight size={13} className="text-muted-foreground" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Store logo: uploaded image, or initials + name + tagline from the theme settings. `dark` = on a photo or dark background. */
 export function StoreLogo({ dark = false }: { dark?: boolean }) {
   const { settings } = useTheme()
   const name = settingText(settings.logo_text)
-  if (settings.logo_url) return <img src={settingText(settings.logo_url)} alt={name || 'Logo'} className="h-10 w-auto max-w-[180px] object-contain" />
+  const image = settingText((dark && settings.logo_url_light) || settings.logo_url)
+  if (image) return <img src={image} alt={name || 'Logo'} className="h-10 w-auto max-w-[180px] object-contain" />
   return (
     <div className="flex items-center gap-2">
       {settings.logo_badge ? <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-teal text-lg font-bold text-white">{settingText(settings.logo_badge)}</div> : null}
-      <div className="hidden text-left leading-tight sm:block">
-        <div className={cn('text-base font-bold', dark ? 'text-white' : 'text-brand-ink')}>{name}</div>
-        {settings.logo_tagline ? <div className={cn('text-[10px] uppercase tracking-wider', dark ? 'text-white/60' : 'text-muted-foreground')}>{settingText(settings.logo_tagline)}</div> : null}
+      <div className={cn('text-left leading-tight', settings.logo_badge ? 'hidden sm:block' : '')}>
+        <div className={cn('text-xl', dark ? 'text-white' : 'text-brand-ink')} style={{ fontFamily: 'var(--theme-font-heading)' }}>{name}</div>
+        {settings.logo_tagline ? <div className={cn('text-[10px] uppercase tracking-wider', dark ? 'text-white/70' : 'text-muted-foreground')}>{settingText(settings.logo_tagline)}</div> : null}
       </div>
     </div>
   )

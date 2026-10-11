@@ -78,10 +78,12 @@ Every theme gets the built-in settings below. A theme can add its own, or redefi
 |---|---|---|
 | `color_primary`, `color_primary_dark`, `color_accent`, `color_highlight`, `color_text`, `color_background`, `color_surface`, `color_tint`, `color_border` | color | Store color tokens |
 | `font_body`, `font_heading` | select | `--theme-font-body`, `--theme-font-heading` |
+| `heading_weight` | range (300–800) | `--theme-heading-weight` |
 | `radius` | range (px) | `--radius` |
-| `logo_url`, `logo_badge`, `logo_text`, `logo_tagline` | image / text | Header and footer logo |
-| `show_announcement`, `announcement_text` | checkbox / text | Header announcement bar |
-| `show_footer_newsletter`, `footer_about`, `show_payment_badges`, `copyright_text` | | Footer |
+| `logo_url`, `logo_url_light`, `logo_badge`, `logo_text`, `logo_tagline` | image / text | Header and footer logo (`logo_url_light` on the transparent header) |
+| `header_style` (`editorial`, `classic`), `header_transparent` | select / checkbox | Header layout; editorial header over the homepage's first full-width banner |
+| `show_announcement`, `announcement_text` | checkbox / text | Announcement bar (separate messages with `\|` to rotate) |
+| `footer_style` (`editorial`, `classic`), `show_footer_newsletter`, `footer_newsletter_title`, `footer_newsletter_text`, `footer_about`, `show_payment_badges`, `copyright_text` | | Footer |
 | `hide_chrome_on_home` | checkbox | Hide store header/footer on the homepage |
 
 Setting fields: `id` (lowercase, `a-z0-9_`), `type` (`color`, `text`, `textarea`, `image`, `select`, `checkbox`, `range`),
@@ -99,13 +101,20 @@ Store color tokens you can target: `--brand-teal` (primary), `--brand-teal-dark`
 ### Homepage sections
 
 `hero`, `trust_bar`, `categories`, `featured`, `banner`, `collections`, `new_arrivals`, `best_sellers`, `on_sale`,
-`features`, `testimonials`, `clients`, `blog`, `newsletter`, `instagram`, `gallery`, `rich_text`, `page`.
+`features`, `testimonials`, `clients`, `blog`, `newsletter`, `instagram`, `gallery`, `image_banner`, `split_feature`,
+`link_grid`, `product_slider`, `rich_text`, `page`.
 
 Section settings: `eyebrow`, `title` (most sections); `banner` adds `text`, `button_label`, `link`; `newsletter` uses
 `title`, `text`; `rich_text` uses `title`, `html`; `page` uses `page` (a page slug).
 `hero` adds `text`, `button_label`, `link`, `image` (package path or URL), `show_quote_button`, `height` (px),
 `content_align` (`left|center|right`), `overlay` (0–100), `autoplay` (seconds, 0 = off).
 `trust_bar` uses `item_1_title`, `item_1_text` … `item_4_title`, `item_4_text`.
+`image_banner` uses `image`, `mobile_image`, `eyebrow`, `title`, `text`, `button_label`, `link`, `height` (px),
+`content_align`, `content_vertical` (`top|center|bottom`), `overlay` (0–90), `full_width`.
+`split_feature` uses `image`, `eyebrow`, `title`, `text`, `button_label`, `link`, `image_side` (`left|right`), `image_ratio` (`4/5|1/1|4/3`).
+`link_grid` uses `eyebrow`, `title`, `style` (`text|tiles`), `columns` (2–6), `tile_1_label`, `tile_1_link`, `tile_1_image` … `tile_8_*`
+(no tiles = the store categories).
+`product_slider` uses `eyebrow`, `title`, `link_label`, `link`, `source` (`new_arrivals|best_sellers|featured|on_sale`), `per_view` (2–6).
 
 Every section also accepts style settings: `bg_color`, `bg_image`, `bg_overlay` (0–90), `text_color`, `heading_color`,
 `accent_color`, `heading_font`, `body_font`, `heading_size` (px, 0 = default), `text_align`, `padding_top`,

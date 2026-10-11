@@ -35,6 +35,12 @@ export type ThemeSettings = Record<string, ThemeValue>
 
 const t = (id: string, label: string, extra: Partial<ThemeSettingDef> = {}): ThemeSettingDef => ({ id, type: 'text', label, group: 'Content', ...extra })
 const HEADINGS = [t('eyebrow', 'Small heading'), t('title', 'Heading')]
+const ALIGN = [{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]
+export const PRODUCT_SOURCES = [
+  { value: 'new_arrivals', label: 'New arrivals' }, { value: 'best_sellers', label: 'Best sellers' },
+  { value: 'featured', label: 'Featured' }, { value: 'on_sale', label: 'On sale' },
+] as const
+export const LINK_GRID_TILES = 8
 
 export const SECTION_TYPES = {
   hero: {
@@ -71,6 +77,53 @@ export const SECTION_TYPES = {
   newsletter: { label: 'Newsletter signup', schema: [t('title', 'Heading'), t('text', 'Text', { type: 'textarea' })] },
   instagram: { label: 'Instagram grid', schema: HEADINGS },
   gallery: { label: 'Gallery', schema: HEADINGS },
+  image_banner: {
+    label: 'Image banner',
+    note: 'Full-width photo with a large heading and an outlined button.',
+    schema: [
+      t('image', 'Image', { type: 'image' }), t('mobile_image', 'Phone image', { type: 'image', help: 'Optional. Used on small screens.' }),
+      t('eyebrow', 'Small heading'), t('title', 'Heading'), t('text', 'Text', { type: 'textarea' }),
+      t('button_label', 'Button label', { default: 'Shop Now' }), t('link', 'Button link', { type: 'link', default: 'view:products' }),
+      { id: 'height', type: 'range', group: 'Layout', label: 'Height', default: 640, min: 280, max: 1000, step: 10, unit: 'px' },
+      { id: 'content_align', type: 'select', group: 'Layout', label: 'Text position', default: 'left', options: ALIGN },
+      { id: 'content_vertical', type: 'select', group: 'Layout', label: 'Vertical position', default: 'bottom', options: [{ value: 'top', label: 'Top' }, { value: 'center', label: 'Middle' }, { value: 'bottom', label: 'Bottom' }] },
+      { id: 'overlay', type: 'range', group: 'Layout', label: 'Image darkening', default: 25, min: 0, max: 90, step: 5, unit: '%' },
+      { id: 'full_width', type: 'checkbox', group: 'Layout', label: 'Edge to edge', default: true },
+    ],
+  },
+  split_feature: {
+    label: 'Image with text',
+    schema: [
+      t('image', 'Image', { type: 'image' }), t('eyebrow', 'Small heading'), t('title', 'Heading'),
+      t('text', 'Text', { type: 'textarea' }), t('button_label', 'Link label', { default: 'Discover Now' }),
+      t('link', 'Link', { type: 'link', default: 'view:products' }),
+      { id: 'image_side', type: 'select', group: 'Layout', label: 'Image side', default: 'left', options: [{ value: 'left', label: 'Left' }, { value: 'right', label: 'Right' }] },
+      { id: 'image_ratio', type: 'select', group: 'Layout', label: 'Image shape', default: '4/5', options: [{ value: '4/5', label: 'Portrait' }, { value: '1/1', label: 'Square' }, { value: '4/3', label: 'Landscape' }] },
+    ],
+  },
+  link_grid: {
+    label: 'Link grid',
+    note: 'Leave every tile empty to list the store categories instead.',
+    schema: [
+      ...HEADINGS,
+      { id: 'style', type: 'select', group: 'Layout', label: 'Style', default: 'text', options: [{ value: 'text', label: 'Text links' }, { value: 'tiles', label: 'Image tiles' }] },
+      { id: 'columns', type: 'range', group: 'Layout', label: 'Columns (desktop)', default: 4, min: 2, max: 6, step: 1 },
+      ...Array.from({ length: LINK_GRID_TILES }, (_, i) => i + 1).flatMap((n) => [
+        t(`tile_${n}_label`, `Tile ${n} label`, { group: `Tile ${n}` }),
+        t(`tile_${n}_link`, `Tile ${n} link`, { group: `Tile ${n}`, type: 'link' }),
+        t(`tile_${n}_image`, `Tile ${n} image`, { group: `Tile ${n}`, type: 'image' }),
+      ]),
+    ],
+  },
+  product_slider: {
+    label: 'Product slider',
+    schema: [
+      ...HEADINGS,
+      t('link_label', 'Link label', { default: 'View all' }), t('link', 'Link', { type: 'link', default: 'view:products' }),
+      { id: 'source', type: 'select', group: 'Content', label: 'Products', default: 'new_arrivals', options: [...PRODUCT_SOURCES] },
+      { id: 'per_view', type: 'range', group: 'Layout', label: 'Cards visible (desktop)', default: 4, min: 2, max: 6, step: 1 },
+    ],
+  },
   rich_text: { label: 'Custom HTML', schema: [t('title', 'Heading'), t('html', 'HTML content', { type: 'html' })] },
   page: { label: 'Custom page', note: 'Embeds a page from Pages.', schema: [t('page', 'Page', { type: 'page' })] },
 } satisfies Record<string, { label: string; note?: string; schema: ThemeSettingDef[] }>
@@ -144,6 +197,8 @@ export interface StorefrontTheme {
 // ---------- default theme ----------
 
 const FONT_OPTIONS = [
+  { value: 'var(--font-dmsans), system-ui, sans-serif', label: 'DM Sans' },
+  { value: 'var(--font-newsreader), Georgia, serif', label: 'Newsreader (serif)' },
   { value: 'var(--font-inter), system-ui, sans-serif', label: 'Inter' },
   { value: 'var(--font-jakarta), system-ui, sans-serif', label: 'Plus Jakarta Sans' },
   { value: 'var(--font-cairo), system-ui, sans-serif', label: 'Cairo' },
@@ -153,25 +208,32 @@ const FONT_OPTIONS = [
 
 /** Settings every theme gets; a package's own schema is appended (same id overrides). */
 export const CORE_SETTINGS: ThemeSettingDef[] = [
-  { id: 'color_primary', type: 'color', group: 'Colors', label: 'Primary', default: '#0D6B8C', var: ['--brand-teal', '--primary', '--ring', '--sidebar-primary', '--chart-1'] },
-  { id: 'color_primary_dark', type: 'color', group: 'Colors', label: 'Primary (dark)', default: '#09505F', var: ['--brand-teal-dark', '--secondary-foreground', '--accent-foreground'] },
-  { id: 'color_accent', type: 'color', group: 'Colors', label: 'Accent', default: '#00B4D8', var: ['--brand-cyan', '--chart-2'] },
-  { id: 'color_highlight', type: 'color', group: 'Colors', label: 'Highlight', default: '#E8A100', var: ['--brand-gold', '--chart-3'] },
-  { id: 'color_text', type: 'color', group: 'Colors', label: 'Text', default: '#1A1A2E', var: ['--brand-ink', '--foreground', '--card-foreground', '--popover-foreground'] },
-  { id: 'color_background', type: 'color', group: 'Colors', label: 'Background', default: '#FFFFFF', var: ['--background', '--card', '--popover'] },
-  { id: 'color_surface', type: 'color', group: 'Colors', label: 'Section background', default: '#F7F9FC', var: ['--brand-bg', '--secondary'] },
-  { id: 'color_tint', type: 'color', group: 'Colors', label: 'Tint', default: '#E8F4F8', var: ['--accent'] },
-  { id: 'color_border', type: 'color', group: 'Colors', label: 'Borders', default: '#E2E8F0', var: ['--border', '--input'] },
+  { id: 'color_primary', type: 'color', group: 'Colors', label: 'Primary', default: '#383838', var: ['--brand-teal', '--primary', '--ring', '--sidebar-primary', '--chart-1'] },
+  { id: 'color_primary_dark', type: 'color', group: 'Colors', label: 'Primary (dark)', default: '#1F1F1F', var: ['--brand-teal-dark', '--secondary-foreground', '--accent-foreground'] },
+  { id: 'color_accent', type: 'color', group: 'Colors', label: 'Accent', default: '#6B6358', var: ['--brand-cyan', '--chart-2'] },
+  { id: 'color_highlight', type: 'color', group: 'Colors', label: 'Highlight (sale)', default: '#E6352A', var: ['--brand-gold', '--chart-3'] },
+  { id: 'color_text', type: 'color', group: 'Colors', label: 'Text', default: '#383838', var: ['--brand-ink', '--foreground', '--card-foreground', '--popover-foreground'] },
+  { id: 'color_background', type: 'color', group: 'Colors', label: 'Background', default: '#FFFEFA', var: ['--background', '--card', '--popover'] },
+  { id: 'color_surface', type: 'color', group: 'Colors', label: 'Section background', default: '#F3F1EA', var: ['--brand-bg', '--secondary'] },
+  { id: 'color_tint', type: 'color', group: 'Colors', label: 'Tint', default: '#FFEBEA', var: ['--accent'] },
+  { id: 'color_border', type: 'color', group: 'Colors', label: 'Borders', default: '#E4E1D8', var: ['--border', '--input'] },
   { id: 'font_body', type: 'select', group: 'Typography', label: 'Body font', default: FONT_OPTIONS[0].value, options: FONT_OPTIONS, var: '--theme-font-body' },
   { id: 'font_heading', type: 'select', group: 'Typography', label: 'Heading font', default: FONT_OPTIONS[1].value, options: FONT_OPTIONS, var: '--theme-font-heading' },
-  { id: 'radius', type: 'range', group: 'Typography', label: 'Corner radius', default: 10, min: 0, max: 24, step: 1, unit: 'px', var: '--radius' },
+  { id: 'heading_weight', type: 'range', group: 'Typography', label: 'Heading weight', default: 500, min: 300, max: 800, step: 100, var: '--theme-heading-weight' },
+  { id: 'radius', type: 'range', group: 'Typography', label: 'Corner radius', default: 0, min: 0, max: 24, step: 1, unit: 'px', var: '--radius' },
   { id: 'logo_url', type: 'image', group: 'Branding', label: 'Logo image', default: '', help: 'Replaces the text logo when set.' },
-  { id: 'logo_badge', type: 'text', group: 'Branding', label: 'Logo initials', default: 'NE' },
+  { id: 'logo_url_light', type: 'image', group: 'Branding', label: 'Logo on photos', default: '', help: 'Light logo for the transparent header. Falls back to the logo image.' },
+  { id: 'logo_badge', type: 'text', group: 'Branding', label: 'Logo initials', default: '' },
   { id: 'logo_text', type: 'text', group: 'Branding', label: 'Store name', default: 'NexEcoms' },
   { id: 'logo_tagline', type: 'text', group: 'Branding', label: 'Logo tagline', default: 'Medical Equipment' },
+  { id: 'header_style', type: 'select', group: 'Header', label: 'Header style', default: 'editorial', options: [{ value: 'editorial', label: 'Editorial (one row)' }, { value: 'classic', label: 'Classic (search bar + menu row)' }] },
+  { id: 'header_transparent', type: 'checkbox', group: 'Header', label: 'Transparent header over the homepage banner', default: true, help: 'Editorial style only. Used when the homepage starts with a hero or image banner.' },
   { id: 'show_announcement', type: 'checkbox', group: 'Header', label: 'Show announcement bar', default: true },
-  { id: 'announcement_text', type: 'text', group: 'Header', label: 'Announcement', default: 'Free UAE Delivery on Purchases Above AED 2,000' },
+  { id: 'announcement_text', type: 'text', group: 'Header', label: 'Announcement', default: 'Free UAE Delivery on Purchases Above AED 2,000 | Delivery within 2-5 days across the UAE', help: 'Separate messages with | to rotate them.' },
+  { id: 'footer_style', type: 'select', group: 'Footer', label: 'Footer style', default: 'editorial', options: [{ value: 'editorial', label: 'Editorial (light)' }, { value: 'classic', label: 'Classic (dark)' }] },
   { id: 'show_footer_newsletter', type: 'checkbox', group: 'Footer', label: 'Show newsletter band', default: true },
+  { id: 'footer_newsletter_title', type: 'text', group: 'Footer', label: 'Newsletter heading', default: 'Stay in the Loop' },
+  { id: 'footer_newsletter_text', type: 'text', group: 'Footer', label: 'Newsletter text', default: 'Subscribe for new arrivals, offers and updates.' },
   { id: 'footer_about', type: 'textarea', group: 'Footer', label: 'About text', default: 'Delivering world-class medical equipment across the UAE' },
   { id: 'show_payment_badges', type: 'checkbox', group: 'Footer', label: 'Show payment badges', default: true },
   { id: 'copyright_text', type: 'text', group: 'Footer', label: 'Copyright name', default: 'NexEcoms' },
@@ -181,10 +243,19 @@ export const CORE_SETTINGS: ThemeSettingDef[] = [
 let seq = 0
 const sid = (prefix: string) => `${prefix}-${(++seq).toString(36)}`
 
-export const DEFAULT_SECTIONS: ThemeSection[] = (
-  ['hero', 'trust_bar', 'categories', 'featured', 'banner', 'collections', 'new_arrivals', 'best_sellers',
-    'on_sale', 'features', 'testimonials', 'clients', 'blog', 'newsletter', 'instagram', 'gallery'] as SectionType[]
-).map((type) => ({ id: `s-${type}`, type, enabled: true, settings: {} }))
+/** Editorial homepage (see DESIGN.md): banner, product rows, image stories, link grid, social strip. */
+export const DEFAULT_SECTIONS: ThemeSection[] = ([
+  ['hero', { content_align: 'left', overlay: 35, height: 720, show_quote_button: false }],
+  ['product_slider', { title: 'New Arrivals', source: 'new_arrivals', link_label: 'Discover Now' }],
+  ['split_feature', { title: 'The Finishing Touches', text: 'Considered details that make every space work better.', button_label: 'Shop Now' }],
+  ['categories', { eyebrow: 'Browse', title: 'Shop by Category' }],
+  ['product_slider', { title: 'Bestsellers', source: 'best_sellers', link_label: 'Shop Bestsellers' }],
+  ['image_banner', { title: 'Explore the Collection', button_label: 'Explore Now' }],
+  ['split_feature', { title: 'Made to Last', text: 'Equipment chosen for comfort, safety and everyday use.', image_side: 'right', button_label: 'Read More', link: 'view:about' }],
+  ['product_slider', { title: 'On Sale', source: 'on_sale', link_label: 'Shop Offers', link: 'view:offers' }],
+  ['link_grid', { title: 'Find What You Need' }],
+  ['instagram', { eyebrow: 'Follow us', title: '#livingwithus' }],
+] as [SectionType, ThemeSettings][]).map(([type, settings], i) => ({ id: `s-${type}-${i}`, type, enabled: true, settings }))
 
 const item = (label: string, link: string, children?: MenuItem[]): MenuItem => ({ id: sid('m'), label, link, ...(children ? { children } : {}) })
 

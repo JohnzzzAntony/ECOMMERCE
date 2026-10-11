@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans, Cairo } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans, Cairo, DM_Sans, Newsreader } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/frontend/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/frontend/components/ui/sonner";
@@ -19,6 +19,18 @@ const jakarta = Plus_Jakarta_Sans({
 const cairo = Cairo({
   variable: "--font-cairo",
   subsets: ["arabic", "latin"],
+  display: "swap",
+});
+
+const dmSans = DM_Sans({
+  variable: "--font-dmsans",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
+  subsets: ["latin"],
   display: "swap",
 });
 
@@ -51,15 +63,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Font variables sit on <html> so the theme's :root variables (e.g. --theme-font-heading) can reference them.
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${jakarta.variable} ${cairo.variable} ${dmSans.variable} ${newsreader.variable}`} suppressHydrationWarning>
       <head>
         {/* A template script navigated its isolated frame (name "theme-frame") to a store URL: hand the
             URL to the real page and render nothing here. Runs before the app bundle. */}
         <script dangerouslySetInnerHTML={{ __html: "if(window.name==='theme-frame'&&window.parent!==window){window.parent.postMessage({__themeFrame:1,type:'navigate',href:location.href},'*');document.documentElement.style.display='none';window.stop&&window.stop()}" }} />
       </head>
       <body
-        className={`${inter.variable} ${jakarta.variable} ${cairo.variable} antialiased bg-background text-foreground`}
+        className={`antialiased bg-background text-foreground`}
       >
         {children}
         <Toaster />

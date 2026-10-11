@@ -231,6 +231,23 @@
 .page-content table { width: 100%; border-collapse: collapse; }
 .page-content th, .page-content td { border: 1px solid var(--border); padding: 0.5em 0.75em; text-align: left; }
 
+/* Theme "Heading weight" setting. The :not() lifts specificity above utility classes such as font-bold. */
+:is(h1, h2, h3, h4):not(.keep-weight) { font-weight: var(--theme-heading-weight, 700); }
+
+/* Editorial theme pieces (DESIGN.md): outlined square button, underlined text link, scroll rows. */
+.btn-outline { display: inline-flex; align-items: center; gap: .5rem; border: 1px solid currentColor; padding: .75rem 1.5rem; font-size: .875rem; line-height: 1; border-radius: var(--radius); transition: background-color .2s, color .2s; }
+.btn-outline:hover { background: var(--brand-ink); border-color: var(--brand-ink); color: var(--background); }
+.btn-outline.on-image:hover { background: var(--background); border-color: var(--background); color: var(--brand-ink); }
+.text-link { font-size: .875rem; text-decoration: underline; text-underline-offset: .3em; text-decoration-thickness: 1px; }
+.text-link:hover { text-decoration-thickness: 2px; }
+.scroll-row { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - (var(--per-view) - 1) * 1rem) / var(--per-view)); gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.scroll-row::-webkit-scrollbar { display: none; }
+.scroll-row > * { scroll-snap-align: start; }
+@media (max-width: 639px) { .scroll-row { grid-auto-columns: 66%; } }
+@media (min-width: 640px) and (max-width: 1023px) { .scroll-row { grid-auto-columns: 40%; } }
+@keyframes announce-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.announce-in { animation: announce-in .5s ease; }
+
 /* ---- Theme sections (see components/theme/section-frame.tsx) ---- */
 .theme-section { position: relative; }
 .theme-section.has-bg > :not(.theme-section) { background-color: transparent !important; }
