@@ -108,7 +108,7 @@ const FRAME_BRIDGE = `(function () {
 // Template CSS is fetched by the store page (same origin, HTTP-cached by its versioned URL) and
 // inlined: the frame's opaque origin can't load it as a <link>. One download serves every page.
 const cssCache = new Map<string, Promise<string>>()
-function useStylesheet(url: string) {
+export function useStylesheet(url: string) {
   const [loaded, setLoaded] = useState<{ url: string; css: string } | null>(null)
   useEffect(() => {
     if (!url) return

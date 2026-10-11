@@ -131,12 +131,13 @@ function Sidebar({ section, onSelect }: { section: SectionKey; onSelect: (s: Sec
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-white/40">Management</div>
         <ul className="space-y-1">
-          {SECTIONS.map(({ key, label, icon: Icon }) => {
+          {SECTIONS.map(({ key, label, icon: Icon, group }, i) => {
             const active = section === key
+            const heading = i === 0 ? 'Management' : group !== SECTIONS[i - 1].group ? group ?? 'Configuration' : null
             return (
               <li key={key}>
+                {heading && <div className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-white/40 ${i ? 'mt-4' : ''}`}>{heading}</div>}
                 <button
                   onClick={() => onSelect(key)}
                   aria-current={active ? 'page' : undefined}

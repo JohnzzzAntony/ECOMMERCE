@@ -3,8 +3,8 @@
 // (click-to-edit sections, theme settings, custom CSS) with a live storefront preview.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, ChevronDown, Download, Eye, EyeOff, Loader2,
-  Monitor, Palette, Pencil, Plus, RotateCcw, Save, Smartphone, Trash2, Upload,
+  AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, ChevronDown, Code2, Copy, Download, Eye, EyeOff, GripVertical, Loader2,
+  Monitor, MoreHorizontal, Palette, Pencil, Plus, Redo2, RotateCcw, Save, Smartphone, Trash2, Undo2, Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/frontend/components/ui/badge'
@@ -13,15 +13,15 @@ import { Card, CardContent } from '@/frontend/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/frontend/components/ui/dialog'
 import { Input } from '@/frontend/components/ui/input'
 import { Label } from '@/frontend/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/frontend/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/frontend/components/ui/select'
 import { Skeleton } from '@/frontend/components/ui/skeleton'
 import { Switch } from '@/frontend/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/frontend/components/ui/tabs'
 import { Textarea } from '@/frontend/components/ui/textarea'
 import {
-  MENU_HANDLES, SECTION_TYPES, sectionSchema, type MenuHandle, type MenuItem, type SectionType, type ThemeSection, type ThemeSettingDef, type ThemeSettings, type ThemeValue,
+  MENU_HANDLES, resolveLink, SECTION_TYPES, sectionSchema, type MenuHandle, type MenuItem, type SectionType, type ThemeSection, type ThemeSettingDef, type ThemeSettings, type ThemeValue,
 } from '@/shared/theme'
-import { EDITOR_PARAM, type EditorMessage } from '@/frontend/components/theme/editor-bridge'
+import { EDITOR_PARAM, PREVIEW_PARAM, type EditorMessage } from '@/frontend/components/theme/editor-bridge'
 import { adminApi, errorMessage, useAdminList } from './admin-api'
 import { LinkPicker, useLinkTargets, type LinkTargets } from './link-picker'
 import { MenuEditor, refreshStorefrontTheme } from './navigation'
@@ -83,49 +83,116 @@ function InstallBar({ onInstalled }: { onInstalled: (theme: AdminTheme, warnings
   )
 }
 
-function ThemeRow({ theme, onCustomize, onChanged }: { theme: AdminTheme; onCustomize: () => void; onChanged: () => void }) {
+/** "…" menu with the less common theme actions. */
+function ActionsMenu({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+  return (
+    <div ref={ref} className="relative">
+      <Button size="icon" variant="outline" className="size-8" onClick={() => setOpen(!open)} aria-label="Theme actions" aria-expanded={open}><MoreHorizontal className="size-4" /></Button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-9 z-20 w-44 rounded-md border border-border bg-popover p-1 shadow-lg" onClick={() => setOpen(false)}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MenuAction({ icon: Icon, label, onClick, href, danger }: { icon: React.ElementType; label: string; onClick?: () => void; href?: string; danger?: boolean }) {
+  const cls = `flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${danger ? 'text-red-600' : ''}`
+  return href
+    ? <a role="menuitem" href={href} target={href.startsWith('/?') ? '_blank' : undefined} rel="noreferrer" className={cls}><Icon className="size-4" />{label}</a>
+    : <button role="menuitem" className={cls} onClick={onClick}><Icon className="size-4" />{label}</button>
+}
+
+type Opener = (id: string, tab?: string) => void
+
+function ThemeRow({ theme, current, onOpen, onChanged }: { theme: AdminTheme; current?: boolean; onOpen: Opener; onChanged: (focus?: AdminTheme) => void }) {
   const [busy, setBusy] = useState(false)
   const swatches = ['color_primary', 'color_accent', 'color_highlight', 'color_text', 'color_surface'].map((k) => String(theme.settings[k] ?? ''))
+  const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn() } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) } }
 
-  const activate = async () => {
-    setBusy(true)
-    try {
-      await adminApi.put('/api/admin/themes', { id: theme.id, activate: true })
-      toast.success(`${theme.name} is now live`)
-      onChanged()
-      refreshStorefrontTheme()
-    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
-  }
-  const remove = async () => {
-    if (!confirm(`Delete "${theme.name}"?${theme.pageCount ? ` Its ${theme.pageCount} imported page(s) are deleted too.` : ''}`)) return
-    setBusy(true)
-    try {
-      await adminApi.del(`/api/admin/themes?id=${theme.id}`)
-      toast.success('Theme deleted')
-      onChanged()
-    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
-  }
+  const publish = () => run(async () => {
+    if (!confirm(`Publish "${theme.name}"? It replaces the live theme and its menus become the store menus.`)) return
+    await adminApi.put('/api/admin/themes', { id: theme.id, activate: true })
+    toast.success(`${theme.name} is now live`)
+    onChanged()
+    refreshStorefrontTheme()
+  })
+  const rename = () => run(async () => {
+    const name = prompt('Theme name', theme.name)?.trim()
+    if (!name || name === theme.name) return
+    await adminApi.put('/api/admin/themes', { id: theme.id, name })
+    toast.success('Theme renamed')
+    onChanged()
+  })
+  const duplicate = () => run(async () => {
+    const res = await adminApi.post<{ theme: AdminTheme }>('/api/admin/themes/duplicate', { id: theme.id })
+    toast.success(`Created "${res.theme.name}"`)
+    onChanged()
+  })
+  const remove = () => run(async () => {
+    if (!confirm(`Delete "${theme.name}"?${theme.pageCount ? ` Its ${theme.pageCount} page(s) are deleted too.` : ''} This can't be undone.`)) return
+    await adminApi.del(`/api/admin/themes?id=${theme.id}`)
+    toast.success('Theme deleted')
+    onChanged()
+  })
 
+  const meta = `v${theme.version}${theme.author ? ` · ${theme.author}` : ''}${theme.pageCount ? ` · ${theme.pageCount} page${theme.pageCount === 1 ? '' : 's'}` : ''} · ${theme.kind === 'html' ? 'HTML template' : 'Native'}`
+  const actions = (
+    <ActionsMenu>
+      <MenuAction icon={Eye} label="Preview" href={theme.isActive ? '/' : `/?${PREVIEW_PARAM}=${theme.id}`} />
+      <MenuAction icon={Pencil} label="Rename" onClick={rename} />
+      <MenuAction icon={Copy} label="Duplicate" onClick={duplicate} />
+      <MenuAction icon={Download} label="Download theme file" href={`/api/admin/themes/export?id=${theme.id}`} />
+      <MenuAction icon={Code2} label="Edit code" onClick={() => onOpen(theme.id, 'css')} />
+      {!theme.isActive && <MenuAction icon={Trash2} label="Delete" danger onClick={remove} />}
+    </ActionsMenu>
+  )
+
+  if (current) {
+    return (
+      <Card className="overflow-hidden py-0">
+        <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+          <div className="flex h-24 w-full shrink-0 overflow-hidden rounded-md border border-border sm:w-40">
+            {swatches.map((c, i) => <div key={i} className="flex-1" style={{ background: c || '#eee' }} />)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Current theme</div>
+            <div className="mt-0.5 flex items-center gap-2">
+              <h3 className="truncate text-lg font-semibold text-brand-ink">{theme.name}</h3>
+              <Badge className="h-5 bg-emerald-600 px-1.5 text-[10px]">Live</Badge>
+            </div>
+            <p className="truncate text-xs text-muted-foreground">{meta} · Saved {new Date(theme.updatedAt).toLocaleString()}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {actions}
+            <Button size="sm" className="h-8 bg-brand-teal hover:bg-brand-teal-dark" disabled={busy} onClick={() => onOpen(theme.id)}><Palette className="size-4" /> Customize</Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
   return (
-    <div className={`flex flex-wrap items-center gap-3 px-3 py-2.5 ${theme.isActive ? 'bg-brand-teal/5' : ''}`}>
-      <div className="flex h-8 w-16 shrink-0 overflow-hidden rounded border border-border">
+    <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+      <div className="flex h-8 w-14 shrink-0 overflow-hidden rounded border border-border">
         {swatches.map((c, i) => <div key={i} className="flex-1" style={{ background: c || '#eee' }} />)}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="truncate text-sm font-semibold text-brand-ink">{theme.name}</span>
-          {theme.isActive && <Badge className="h-5 bg-emerald-600 px-1.5 text-[10px]">Live</Badge>}
-          <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase">{theme.kind === 'html' ? 'HTML' : 'Native'}</Badge>
-        </div>
-        <p className="truncate text-xs text-muted-foreground">
-          v{theme.version}{theme.author ? ` · ${theme.author}` : ''}{theme.pageCount ? ` · ${theme.pageCount} page${theme.pageCount === 1 ? '' : 's'}` : ''}{theme.description ? ` · ${theme.description}` : ''}
-        </p>
+        <div className="truncate text-sm font-semibold text-brand-ink">{theme.name}</div>
+        <p className="truncate text-xs text-muted-foreground">{meta} · Saved {new Date(theme.updatedAt).toLocaleDateString()}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button size="sm" className="h-8 bg-brand-teal hover:bg-brand-teal-dark" onClick={onCustomize}><Palette className="size-4" /> Edit</Button>
-        {!theme.isActive && <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={activate}><CheckCircle2 className="size-4" /> Publish</Button>}
-        <Button size="icon" variant="ghost" className="size-8" asChild title="Export"><a href={`/api/admin/themes/export?id=${theme.id}`} aria-label="Export"><Download className="size-4" /></a></Button>
-        {!theme.isActive && <Button size="icon" variant="ghost" className="size-8 text-red-600 hover:text-red-700" disabled={busy} onClick={remove} aria-label="Delete" title="Delete"><Trash2 className="size-4" /></Button>}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {actions}
+        <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={publish}>Publish</Button>
+        <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => onOpen(theme.id)}>Customize</Button>
       </div>
     </div>
   )
@@ -221,9 +288,14 @@ const CHROME: Record<string, { label: string; groups: string[] }> = {
   '@footer': { label: 'Footer', groups: ['Footer'] },
 }
 
-function SectionRow({ label, sub, enabled, onSelect, children }: { label: string; sub?: string; enabled?: boolean; onSelect: () => void; children?: React.ReactNode }) {
+function SectionRow({ label, sub, enabled, onSelect, children, drag }: {
+  label: string; sub?: string; enabled?: boolean; onSelect: () => void; children?: React.ReactNode
+  /** Drag-and-drop reordering handlers (sections list). */
+  drag?: React.HTMLAttributes<HTMLDivElement> & { draggable: true }
+}) {
   return (
-    <div className={`group flex items-center gap-1 rounded-md px-2 py-1.5 hover:bg-muted ${enabled === false ? 'opacity-50' : ''}`}>
+    <div {...drag} className={`group flex items-center gap-1 rounded-md px-2 py-1.5 hover:bg-muted ${enabled === false ? 'opacity-50' : ''}`}>
+      {drag && <GripVertical className="size-3.5 shrink-0 cursor-grab text-muted-foreground" />}
       <button className="min-w-0 flex-1 text-left" onClick={onSelect}>
         <div className="truncate text-sm font-medium text-brand-ink">{label}</div>
         {sub && <div className="truncate text-[11px] text-muted-foreground">{sub}</div>}
@@ -234,18 +306,18 @@ function SectionRow({ label, sub, enabled, onSelect, children }: { label: string
 }
 
 /** The theme's own pages: click to preview in the frame, pencil to edit. */
-function ThemePages({ themeId, previewing, onPreview }: { themeId: string; previewing: string; onPreview: (slug: string) => void }) {
+function ThemePages({ themeId, viewing, onPreview }: { themeId: string; viewing: string; onPreview: (link: string) => void }) {
   const { items, loading, reload } = useAdminList<AdminPage>('/api/admin/pages')
   const [draft, setDraft] = useState<Draft | null>(null)
   const pages = items.filter((p) => p.theme?.id === themeId)
   return (
     <div className="space-y-1 px-2 pb-4">
       <p className="px-2 pb-2 text-xs text-muted-foreground">Pages that came with this theme. Click to preview, pencil to edit content, styles and SEO.</p>
-      <SectionRow label={previewing ? 'Home page' : 'Home page (previewing)'} sub='Sections' onSelect={() => onPreview('')} />
+      <SectionRow label={viewing === 'view:home' ? 'Home page (previewing)' : 'Home page'} sub='Sections' onSelect={() => onPreview('view:home')} />
       {loading && <Skeleton className="h-10 w-full" />}
       {!loading && !pages.length && <p className="px-2 py-3 text-xs text-muted-foreground">This theme has no pages of its own. Store pages are under Pages.</p>}
       {pages.map((p) => (
-        <SectionRow key={p.id} label={p.title} sub={`/?page=${p.slug}${p.isPublished ? '' : ' · draft'}`} onSelect={() => onPreview(p.slug)}>
+        <SectionRow key={p.id} label={viewing === `page:${p.slug}` ? `${p.title} (previewing)` : p.title} sub={`/?page=${p.slug}${p.isPublished ? '' : ' · draft'}`} onSelect={() => onPreview(`page:${p.slug}`)}>
           <Button variant="ghost" size="icon" className="size-7" onClick={() => setDraft(pageDraft(p))} aria-label="Edit page"><Pencil className="size-3.5" /></Button>
         </SectionRow>
       ))}
@@ -284,25 +356,102 @@ function ThemeMenus({ theme, targets }: { theme: AdminTheme; targets: LinkTarget
   )
 }
 
-function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () => void; onSaved: (t: AdminTheme) => void }) {
+type Doc = { settings: ThemeSettings; sections: ThemeSection[]; css: string }
+
+/** Pages of the store to open in the preview (like Shopify's template picker). */
+function previewOptions(targets: LinkTargets) {
+  return [
+    { group: 'Store', items: [
+      { value: 'view:home', label: 'Home page' }, { value: 'view:products', label: 'All products' },
+      ...(targets.categories[0] ? [{ value: `category:${targets.categories[0].value}`, label: `Category: ${targets.categories[0].label}` }] : []),
+      ...(targets.collections[0] ? [{ value: `collection:${targets.collections[0].value}`, label: `Collection: ${targets.collections[0].label}` }] : []),
+      { value: 'view:cart', label: 'Cart' }, { value: 'view:blog', label: 'Blog' }, { value: 'view:contact', label: 'Contact' },
+      { value: 'view:about', label: 'About' }, { value: 'view:faq', label: 'FAQ' }, { value: 'view:offers', label: 'Offers' },
+    ] },
+    { group: 'Pages', items: targets.pages.map((p) => ({ value: `page:${p.value}`, label: p.label })) },
+  ]
+}
+
+function Customizer({ theme, initialTab, onBack, onSaved }: { theme: AdminTheme; initialTab?: string; onBack: () => void; onSaved: (t: AdminTheme) => void }) {
   const [settings, setSettings] = useState(theme.settings)
   const [sections, setSections] = useState(theme.sections)
   const [css, setCss] = useState(theme.css)
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState('sections')
+  const [tab, setTab] = useState(initialTab ?? 'sections')
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
   const [adding, setAdding] = useState<SectionType | ''>('')
   const [saving, setSaving] = useState(false)
-  const [previewPage, setPreviewPage] = useState(theme.kind === 'html' ? String(sections.find((s) => s.type === 'page')?.settings.page ?? '') : '')
+  const [viewing, setViewing] = useState('view:home')
+  const [dragging, setDragging] = useState<number | null>(null)
   const frame = useRef<HTMLIFrameElement>(null)
   const targets = useLinkTargets()
   const dirty = JSON.stringify(settings) !== JSON.stringify(theme.settings) || JSON.stringify(sections) !== JSON.stringify(theme.sections) || css !== theme.css
 
   // ----- preview frame link -----
   const draft = useMemo(() => ({ schema: theme.schema, settings, sections, css, kind: theme.kind }), [theme.schema, theme.kind, settings, sections, css])
-  const latest = useRef({ draft, selected })
-  latest.current = { draft, selected }
+  const latest = useRef({ draft, selected, viewing })
+  latest.current = { draft, selected, viewing }
   const post = (msg: EditorMessage) => frame.current?.contentWindow?.postMessage(msg, window.location.origin)
+  const navigateFrame = (link: string) => {
+    const target = resolveLink(link)
+    if (target.kind === 'view') post({ type: 'nx-editor-navigate', view: target.view, params: target.params })
+  }
+  const go = (link: string) => { setViewing(link); navigateFrame(link) }
+
+  // ----- undo / redo (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y) -----
+  // Edits are grouped: a step is recorded once changes pause for 400 ms.
+  const history = useRef<{ past: Doc[]; future: Doc[]; last: Doc; restoring: boolean }>({ past: [], future: [], last: { settings, sections, css }, restoring: false })
+  const [, setHistoryVersion] = useState(0)
+  useEffect(() => {
+    const h = history.current
+    const doc = { settings, sections, css }
+    if (h.restoring) { h.restoring = false; return }
+    const t = setTimeout(() => {
+      if (JSON.stringify(h.last) === JSON.stringify(doc)) return
+      h.past = [...h.past.slice(-99), h.last]
+      h.future = []
+      h.last = doc
+      setHistoryVersion((v) => v + 1)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [settings, sections, css])
+  const restore = (doc: Doc) => {
+    history.current.restoring = true
+    history.current.last = doc
+    setSettings(doc.settings); setSections(doc.sections); setCss(doc.css)
+    setHistoryVersion((v) => v + 1)
+  }
+  const undo = () => {
+    const h = history.current
+    const current = { settings: latest.current.draft.settings, sections: latest.current.draft.sections, css: latest.current.draft.css }
+    // Unrecorded changes (typed in the last 400 ms) undo to the last recorded state.
+    const pending = JSON.stringify(current) !== JSON.stringify(h.last)
+    const prev = pending ? h.last : h.past.pop()
+    if (!prev) return
+    h.future.push(current)
+    restore(prev)
+  }
+  const redo = () => {
+    const h = history.current
+    const next = h.future.pop()
+    if (!next) return
+    h.past.push(h.last)
+    restore(next)
+  }
+  const undoRef = useRef({ undo, redo })
+  undoRef.current = { undo, redo }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || (e.target as HTMLElement)?.closest?.('input, textarea, [contenteditable]')) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undoRef.current.undo() }
+      else if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); undoRef.current.redo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const canUndo = history.current.past.length > 0 || JSON.stringify({ settings, sections, css }) !== JSON.stringify(history.current.last)
+  const canRedo = history.current.future.length > 0
 
   useEffect(() => {
     const onMessage = (e: MessageEvent<EditorMessage>) => {
@@ -310,6 +459,7 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
       if (e.data?.type === 'nx-editor-ready') {
         post({ type: 'nx-editor-theme', theme: latest.current.draft })
         if (latest.current.selected) post({ type: 'nx-editor-select', id: latest.current.selected })
+        if (latest.current.viewing !== 'view:home') navigateFrame(latest.current.viewing)
       }
       if (e.data?.type === 'nx-editor-select') setSelected(e.data.id)
     }
@@ -317,10 +467,11 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
-  // Stream edits, at most once per frame, so typing and dragging sliders stay smooth.
+  // Stream edits at most every 16 ms so typing and dragging sliders stay smooth. (A timer, not
+  // requestAnimationFrame, which stops firing while the admin tab is in the background.)
   useEffect(() => {
-    const id = requestAnimationFrame(() => post({ type: 'nx-editor-theme', theme: draft }))
-    return () => cancelAnimationFrame(id)
+    const id = setTimeout(() => post({ type: 'nx-editor-theme', theme: draft }), 16)
+    return () => clearTimeout(id)
   }, [draft])
 
   const select = (id: string | null) => {
@@ -330,13 +481,14 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
 
   // ----- edits -----
   const update = (id: string, patch: Partial<ThemeSection>) => setSections((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)))
-  const move = (i: number, d: number) => setSections((list) => {
-    const j = i + d
-    if (j < 0 || j >= list.length) return list
+  const reorder = (from: number, to: number) => setSections((list) => {
+    if (to < 0 || to >= list.length || from === to) return list
     const next = [...list]
-    ;[next[i], next[j]] = [next[j], next[i]]
+    const [item] = next.splice(from, 1)
+    next.splice(to, 0, item)
     return next
   })
+  const move = (i: number, d: number) => reorder(i, i + d)
   const remove = (id: string) => { setSections((list) => list.filter((s) => s.id !== id)); if (selected === id) setSelected(null) }
   const add = (type: SectionType) => {
     const section: ThemeSection = { id: `s-${type}-${Date.now().toString(36)}`, type, enabled: true, settings: {} }
@@ -355,7 +507,7 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
       toast.success(activate ? `${theme.name} saved and published` : 'Theme saved')
     } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
   }
-  const discard = () => { setSettings(theme.settings); setSections(theme.sections); setCss(theme.css) }
+  const discard = () => { if (confirm('Discard all unsaved changes?')) { setSettings(theme.settings); setSections(theme.sections); setCss(theme.css) } }
   const leave = () => { if (!dirty || confirm('Leave without saving your changes?')) onBack() }
 
   // ----- sidebar -----
@@ -396,20 +548,29 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
     panel = (
       <Tabs value={tab} onValueChange={setTab} className="gap-0">
         <TabsList className="m-2 grid h-auto grid-cols-5 [&>button]:px-1 [&>button]:text-xs">
-          <TabsTrigger value="sections">Home</TabsTrigger>
-          <TabsTrigger value="settings">Style</TabsTrigger>
+          <TabsTrigger value="sections" title="Sections">Sections</TabsTrigger>
+          <TabsTrigger value="settings" title="Theme settings">Settings</TabsTrigger>
           <TabsTrigger value="pages">Pages</TabsTrigger>
           <TabsTrigger value="menus">Menus</TabsTrigger>
-          <TabsTrigger value="css">CSS</TabsTrigger>
+          <TabsTrigger value="css" title="Edit code">Code</TabsTrigger>
         </TabsList>
-        <TabsContent value="pages"><ThemePages themeId={theme.id} previewing={previewPage} onPreview={setPreviewPage} /></TabsContent>
+        <TabsContent value="pages"><ThemePages themeId={theme.id} viewing={viewing} onPreview={go} /></TabsContent>
         <TabsContent value="menus"><ThemeMenus theme={theme} targets={targets} /></TabsContent>
         <TabsContent value="sections" className="space-y-1 px-2 pb-4">
-          <p className="px-2 pb-2 text-xs text-muted-foreground">Click a section here or in the preview to edit it.</p>
+          <p className="px-2 pb-2 text-xs text-muted-foreground">Click a section here or in the preview to edit it. Drag to reorder.</p>
+          <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Header</div>
           <SectionRow label="Header" sub="Logo, announcement" onSelect={() => select('@header')} />
-          <div className="my-1 border-t border-border" />
+          <div className="mt-3 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Template · Home page</div>
           {sections.map((sec, i) => (
-            <SectionRow key={sec.id} label={String(sec.settings.title || '') || SECTION_TYPES[sec.type].label} sub={SECTION_TYPES[sec.type].label} enabled={sec.enabled} onSelect={() => select(sec.id)}>
+            <SectionRow key={sec.id} label={String(sec.settings.title || '') || SECTION_TYPES[sec.type].label} sub={SECTION_TYPES[sec.type].label} enabled={sec.enabled} onSelect={() => select(sec.id)}
+              drag={{
+                draggable: true,
+                onDragStart: (e) => { setDragging(i); e.dataTransfer.effectAllowed = 'move' },
+                onDragOver: (e) => { if (dragging !== null) e.preventDefault() },
+                onDrop: (e) => { e.preventDefault(); if (dragging !== null) reorder(dragging, i); setDragging(null) },
+                onDragEnd: () => setDragging(null),
+                className: dragging === i ? 'opacity-40' : undefined,
+              }}>
               <Button variant="ghost" size="icon" className="size-7" onClick={() => update(sec.id, { enabled: !sec.enabled })} aria-label={sec.enabled ? 'Hide' : 'Show'} title={sec.enabled ? 'Hide' : 'Show'}>
                 {sec.enabled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
               </Button>
@@ -427,7 +588,7 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
             </Select>
             <Button variant="outline" size="icon" disabled={!adding} onClick={() => adding && add(adding)} aria-label="Add section"><Plus className="size-4" /></Button>
           </div>
-          <div className="my-1 border-t border-border" />
+          <div className="mt-3 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Footer</div>
           <SectionRow label="Footer" sub="About text, newsletter, payments" onSelect={() => select('@footer')} />
         </TabsContent>
         <TabsContent value="settings">
@@ -452,9 +613,23 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
         <div className="min-w-0">
           <div className="flex items-center gap-2 truncate text-sm font-semibold text-brand-ink">{theme.name} {theme.isActive ? <Badge className="bg-emerald-600">Live</Badge> : <Badge variant="outline">Draft</Badge>}</div>
         </div>
-        <div className="mx-auto flex rounded-md border border-border p-0.5">
+        <div className="mx-auto flex items-center gap-2">
+        <Select value={viewing} onValueChange={go}>
+          <SelectTrigger size="sm" className="h-8 w-52" aria-label="Page to preview"><SelectValue placeholder="Page" /></SelectTrigger>
+          <SelectContent>
+            {previewOptions(targets).map((g) => g.items.length ? (
+              <SelectGroup key={g.group}><SelectLabel>{g.group}</SelectLabel>{g.items.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectGroup>
+            ) : null)}
+          </SelectContent>
+        </Select>
+        <div className="flex rounded-md border border-border p-0.5">
           <Button variant={device === 'desktop' ? 'secondary' : 'ghost'} size="icon" className="size-8" onClick={() => setDevice('desktop')} aria-label="Desktop preview"><Monitor className="size-4" /></Button>
           <Button variant={device === 'mobile' ? 'secondary' : 'ghost'} size="icon" className="size-8" onClick={() => setDevice('mobile')} aria-label="Mobile preview"><Smartphone className="size-4" /></Button>
+        </div>
+        <div className="flex">
+          <Button variant="ghost" size="icon" className="size-8" disabled={!canUndo} onClick={undo} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 className="size-4" /></Button>
+          <Button variant="ghost" size="icon" className="size-8" disabled={!canRedo} onClick={redo} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 className="size-4" /></Button>
+        </div>
         </div>
         <div className="flex items-center gap-2">
           {dirty && <span className="hidden text-xs text-amber-700 sm:inline">Unsaved changes</span>}
@@ -468,7 +643,7 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
         <div className="flex min-w-0 flex-1 justify-center overflow-hidden p-3">
           <iframe
             ref={frame}
-            src={previewPage ? `/?page=${encodeURIComponent(previewPage)}&${EDITOR_PARAM}=1` : `/?${EDITOR_PARAM}=1`}
+            src={`/?${EDITOR_PARAM}=1`}
             title="Storefront preview"
             className={`h-full rounded-md border border-border bg-white shadow-sm transition-[width] duration-300 ${device === 'mobile' ? 'w-[390px]' : 'w-full'}`}
           />
@@ -482,16 +657,18 @@ function Customizer({ theme, onBack, onSaved }: { theme: AdminTheme; onBack: () 
 
 export function ThemesSection() {
   const { items, setItems, loading, error, reload } = useAdminList<AdminTheme>('/api/admin/themes')
-  const [editing, setEditing] = useState<string | null>(null)
+  const [editing, setEditing] = useState<{ id: string; tab?: string } | null>(null)
   const [warnings, setWarnings] = useState<{ name: string; list: string[] } | null>(null)
-  const current = items.find((t) => t.id === editing)
+  const current = items.find((t) => t.id === editing?.id)
+  const live = items.find((t) => t.isActive)
+  const library = items.filter((t) => !t.isActive)
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- leave the customizer if its theme was deleted
   useEffect(() => { if (editing && !loading && !current) setEditing(null) }, [editing, loading, current])
 
   if (error) return <LoadError message={error} onRetry={reload} />
   if (current) {
-    return <Customizer key={current.id} theme={current} onBack={() => setEditing(null)} onSaved={(t) => { setItems(items.map((x) => (x.id === t.id ? t : x))); if (t.isActive) reload() }} />
+    return <Customizer key={current.id} theme={current} initialTab={editing?.tab} onBack={() => setEditing(null)} onSaved={(t) => { setItems(items.map((x) => (x.id === t.id ? t : x))); if (t.isActive) reload() }} />
   }
 
   return (
@@ -510,9 +687,17 @@ export function ThemesSection() {
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
       ) : (
-        <Card className="py-0"><CardContent className="divide-y divide-border p-0">
-          {items.map((t) => <ThemeRow key={t.id} theme={t} onCustomize={() => setEditing(t.id)} onChanged={reload} />)}
-        </CardContent></Card>
+        <>
+          {live && <ThemeRow theme={live} current onOpen={(id, tab) => setEditing({ id, tab })} onChanged={reload} />}
+          <div>
+            <h3 className="mb-1.5 mt-4 text-sm font-semibold text-brand-ink">Theme library</h3>
+            <p className="mb-2 text-xs text-muted-foreground">Edit and preview themes without changing the live store. Publish one when it’s ready.</p>
+            <Card className="py-0"><CardContent className="divide-y divide-border p-0">
+              {library.map((t) => <ThemeRow key={t.id} theme={t} onOpen={(id, tab) => setEditing({ id, tab })} onChanged={reload} />)}
+              {!library.length && <p className="px-3 py-6 text-center text-sm text-muted-foreground">No other themes. Upload one or duplicate the current theme.</p>}
+            </CardContent></Card>
+          </div>
+        </>
       )}
 
       <Dialog open={!!warnings} onOpenChange={(o) => !o && setWarnings(null)}>

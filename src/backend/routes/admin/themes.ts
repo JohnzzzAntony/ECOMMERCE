@@ -167,3 +167,55 @@ export async function putMenu(request: Request) {
     return NextResponse.json({ ok: true, items })
   } catch (error) { return failure(error) }
 }
+
+// ---------- duplicate ----------
+
+/** POST { id } — copy a theme with its settings, sections, CSS, pages and menus, as an unpublished theme. */
+export async function duplicateTheme(request: Request) {
+  try {
+    await requireAdmin(request)
+    const body = await readJson(request)
+    const source = await db.theme.findUnique({ where: { id: text(body.id, 'id', 64, true) }, include: { pages: true } })
+    if (!source) throw new HttpError(404, 'Theme not found')
+
+    const slugMap = new Map<string, string>()
+    for (const p of source.pages) {
+      slugMap.set(p.slug, await uniqueSlug(`${p.slug}-copy`, async (s) => [...slugMap.values()].includes(s) || !!(await db.page.findUnique({ where: { slug: s }, select: { id: true } }))))
+    }
+    const relink = (value: string) => (value.startsWith('page:') && slugMap.has(value.slice(5)) ? `page:${slugMap.get(value.slice(5))}` : value)
+    const relinkHtml = (html: string) => html.replace(/(\?page=)([a-z0-9-]+)/g, (m, q: string, slug: string) => (slugMap.has(slug) ? q + slugMap.get(slug) : m))
+    const sections = cleanSections(JSON.parse(source.sections || '[]')).map((s) => ({
+      ...s,
+      settings: Object.fromEntries(Object.entries(s.settings).map(([k, v]) => [k,
+        typeof v !== 'string' ? v : k === 'page' ? slugMap.get(v) ?? v : k === 'html' ? relinkHtml(v) : relink(v)])),
+    }))
+    const name = `Copy of ${source.name}`.slice(0, 120)
+    const slug = await uniqueSlug(name, async (s) => !!(await db.theme.findUnique({ where: { slug: s }, select: { id: true } })))
+
+    const theme = await db.$transaction(async (tx) => {
+      const created = await tx.theme.create({
+        data: {
+          slug, name, version: source.version, author: source.author, description: source.description, kind: source.kind, isActive: false,
+          settingsSchema: source.settingsSchema, settings: source.settings, sections: JSON.stringify(sections), css: source.css,
+        },
+      })
+      if (source.pages.length) {
+        await tx.page.createMany({
+          data: source.pages.map(({ id: _id, createdAt: _c, updatedAt: _u, themeId: _t, slug: old, content, ...p }) => ({
+            ...p, slug: slugMap.get(old)!, content: relinkHtml(content), themeId: created.id,
+          })),
+        })
+      }
+      return created
+    }, { timeout: 30_000 })
+
+    const sourceMenus = await themeMenus(source.id)
+    const relinkMenu = (items: typeof sourceMenus.main): typeof sourceMenus.main =>
+      items.map((m) => ({ ...m, link: relink(m.link), ...(m.children ? { children: relinkMenu(m.children) } : {}) }))
+    for (const [handle, items] of Object.entries(sourceMenus)) await saveMenu(handle, relinkMenu(items), theme.id)
+
+    const full = await db.theme.findUniqueOrThrow({ where: { id: theme.id }, include: { _count: { select: { pages: true } } } })
+    invalidateAll()
+    return NextResponse.json({ ok: true, theme: adminTheme(full) })
+  } catch (error) { return failure(error) }
+}

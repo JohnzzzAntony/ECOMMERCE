@@ -3,6 +3,7 @@
 // frame (/?theme-editor=1, same origin), the editor streams the unsaved theme here and every
 // click on a section selects it in the editor instead of following links.
 import { useEffect, useState } from 'react'
+import { useStore, type NavParams, type ViewKey } from '@/frontend/store/use-store'
 import type { StorefrontTheme } from '@/shared/theme'
 
 export type EditorDraft = Pick<StorefrontTheme, 'schema' | 'settings' | 'sections' | 'css' | 'kind'>
@@ -11,12 +12,28 @@ export type EditorMessage =
   | { type: 'nx-editor-ready' }
   | { type: 'nx-editor-select'; id: string | null }
   | { type: 'nx-editor-theme'; theme: EditorDraft }
+  | { type: 'nx-editor-navigate'; view: ViewKey; params?: NavParams }
 
 export const EDITOR_PARAM = 'theme-editor'
+/** /?theme-preview=<id>: an admin previews an unpublished theme on the real storefront. */
+export const PREVIEW_PARAM = 'theme-preview'
 
 /** Returns the editor's draft theme while in the preview frame, else null. */
 export function useEditorDraft(): EditorDraft | null {
   const [draft, setDraft] = useState<EditorDraft | null>(null)
+
+  // Theme preview: load the theme through the admin API (only works with an admin session).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get(PREVIEW_PARAM)
+    if (!id) return
+    fetch('/api/admin/themes', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((themes: (EditorDraft & { id: string })[]) => {
+        const t = themes.find((x) => x.id === id)
+        if (t) setDraft({ schema: t.schema, settings: t.settings, sections: t.sections, css: t.kind === 'html' ? '' : t.css, kind: t.kind })
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (window.parent === window || !new URLSearchParams(window.location.search).has(EDITOR_PARAM)) return
@@ -39,6 +56,7 @@ export function useEditorDraft(): EditorDraft | null {
       if (e.origin !== window.location.origin || e.source !== parent) return
       if (e.data?.type === 'nx-editor-theme') setDraft(e.data.theme)
       if (e.data?.type === 'nx-editor-select') { selected = e.data.id; select(selected, true) }
+      if (e.data?.type === 'nx-editor-navigate') useStore.getState().navigate(e.data.view, e.data.params)
     }
     const onClick = (e: MouseEvent) => {
       const el = (e.target as Element | null)?.closest?.('[data-section-id]')

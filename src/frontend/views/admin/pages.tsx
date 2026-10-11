@@ -19,6 +19,7 @@ import { IsolatedFrame, SafeHtml } from '@/frontend/components/theme/html-conten
 import type { MenuHandle, MenuItem } from '@/shared/theme'
 import { adminApi, errorMessage, useAdminList } from './admin-api'
 import { refreshStorefrontTheme } from './navigation'
+import { VisualEditor } from './visual-editor'
 import { LoadError, SectionHeader, StatusBadge } from './shared'
 
 export interface AdminPage {
@@ -75,13 +76,22 @@ function PageEditor({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) =>
   }
 
   return (
-    <Tabs defaultValue="content">
+    <Tabs defaultValue={draft.id ? 'visual' : 'content'}>
       <TabsList className="h-auto flex-wrap">
-        <TabsTrigger value="content">Content</TabsTrigger>
+        <TabsTrigger value="visual"><Pencil className="size-3.5" /> Visual editor</TabsTrigger>
+        <TabsTrigger value="content">Content & code</TabsTrigger>
         <TabsTrigger value="preview"><Eye className="size-3.5" /> Preview</TabsTrigger>
         <TabsTrigger value="design">Layout & CSS</TabsTrigger>
         <TabsTrigger value="seo">SEO</TabsTrigger>
       </TabsList>
+
+      <TabsContent value="visual">
+        <VisualEditor
+          html={draft.content} css={draft.css} bodyClass={draft.bodyClass}
+          themeCssUrl={draft.layout === 'isolated' && draft.theme ? `/api/theme-css/${draft.theme.id}` : ''}
+          onChange={(content) => set('content', content)}
+        />
+      </TabsContent>
 
       <TabsContent value="content" className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -174,7 +184,7 @@ export function PageDialog({ draft, setDraft, onSaved }: { draft: Draft | null; 
   }
   return (
     <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="max-h-[96vh] overflow-y-auto sm:max-w-[min(96vw,1400px)]">
         <DialogHeader>
           <DialogTitle>{draft?.id ? `Edit “${draft.title}”` : 'New page'}</DialogTitle>
           <DialogDescription>Changes are saved to the live website.</DialogDescription>
