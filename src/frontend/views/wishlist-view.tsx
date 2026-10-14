@@ -44,7 +44,7 @@ export function WishlistView() {
   const handleMoveAllToCart = () => {
     if (products.length === 0) return
     products.forEach((p) => addToCart(p, 1))
-    toast.success(`${products.length} item(s) moved to enquiry cart`)
+    toast.success(`${products.length} item(s) moved to cart`)
     navigate('cart')
   }
 

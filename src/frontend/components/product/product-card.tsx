@@ -1,7 +1,8 @@
 'use client'
 
 import { sizedImage } from '@/frontend/lib/image'
-import { Heart, ShoppingCart, Eye, GitCompare } from 'lucide-react'
+import { Heart, ShoppingCart, Eye, GitCompare, Zap } from 'lucide-react'
+import { buyNowHref } from '@/shared/storefront'
 import { useStore } from '@/frontend/store/use-store'
 import { StarRating } from './star-rating'
 import { formatAED, discountPercent, effectivePrice } from '@/frontend/lib/format'
@@ -34,7 +35,7 @@ export function ProductCard({ product, variant = 'default' }: ProductCardProps) 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation()
     addToCart(product, 1)
-    toast.success(`${product.name} added to enquiry cart`)
+    toast.success(`${product.name} added to cart`)
   }
 
   const handleWishlist = (e: React.MouseEvent) => {
@@ -170,14 +171,24 @@ export function ProductCard({ product, variant = 'default' }: ProductCardProps) 
             <span className="text-base font-bold text-brand-teal-dark">{formatAED(price)}</span>
           </div>
 
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
           <button
             onClick={handleAddToCart}
             disabled={!product.inStock}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-teal py-2 text-xs font-semibold text-white transition-all hover:bg-brand-teal-dark hover:shadow-md hover:shadow-brand-teal/20 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-teal py-2 text-xs font-semibold text-white transition-all hover:bg-brand-teal-dark hover:shadow-md hover:shadow-brand-teal/20 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
           >
             <ShoppingCart size={14} />
-            Add to Enquiry
+            Add to cart
           </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); window.location.assign(buyNowHref(product.slug)) }}
+            disabled={!product.inStock}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-ink py-2 text-xs font-semibold text-white transition-all hover:bg-brand-ink/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+          >
+            <Zap size={14} />
+            Buy now
+          </button>
+          </div>
         </div>
       </div>
     </div>

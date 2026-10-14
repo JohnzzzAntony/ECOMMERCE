@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { Home, Heart, ShoppingCart, Minus, Plus, Share2, Copy, Truck, ShieldCheck, Headphones, MessageCircle, Facebook, Star, Check, PackageSearch, ThumbsUp, GitCompare, Search } from 'lucide-react'
+import { Home, Heart, ShoppingCart, Zap, Minus, Plus, Share2, Copy, Truck, ShieldCheck, Headphones, MessageCircle, Facebook, Star, Check, PackageSearch, ThumbsUp, GitCompare, Search } from 'lucide-react'
 import { useStore } from '@/frontend/store/use-store'
 import { api } from '@/frontend/lib/api'
 import { StarRating } from '@/frontend/components/product/star-rating'
@@ -16,6 +16,7 @@ import {
   BreadcrumbPage, BreadcrumbSeparator,
 } from '@/frontend/components/ui/breadcrumb'
 import { toast } from 'sonner'
+import { buyNowHref } from '@/shared/storefront'
 import { formatAED, discountPercent, effectivePrice, formatDate } from '@/frontend/lib/format'
 import { cn } from '@/frontend/lib/utils'
 import type { Product, ProductReview } from '@/shared/types'
@@ -89,7 +90,7 @@ export function ProductDetailView() {
   const handleAddToCart = useCallback(() => {
     if (!product) return
     addToCart(product, qty)
-    toast.success(`${qty} × ${product.name} added to enquiry cart`)
+    toast.success(`${qty} × ${product.name} added to cart`)
     setCartDrawerOpen(true)
   }, [product, qty, addToCart, setCartDrawerOpen])
 
@@ -395,9 +396,19 @@ export function ProductDetailView() {
                 onClick={handleAddToCart}
                 disabled={!product.inStock}
                 size="lg"
-                className="flex-1 bg-brand-teal text-white hover:bg-brand-teal-dark"
+                variant="outline"
+                className="flex-1 border-brand-teal text-brand-teal hover:bg-brand-teal hover:text-white"
               >
-                <ShoppingCart size={16} /> Add to Enquiry Cart
+                <ShoppingCart size={16} /> Add to cart
+              </Button>
+
+              <Button
+                onClick={() => window.location.assign(buyNowHref(product.slug, qty))}
+                disabled={!product.inStock}
+                size="lg"
+                className="flex-1 bg-brand-ink text-white hover:bg-brand-ink/90"
+              >
+                <Zap size={16} /> Buy now
               </Button>
 
               <Button

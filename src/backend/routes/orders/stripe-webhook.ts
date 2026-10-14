@@ -25,13 +25,16 @@ export async function POST(request: NextRequest) {
     const orderId = session.metadata?.orderId
 
     if (orderId) {
-      // Update order status to paid
+      // Mark paid and keep the addresses collected on the payment page
+      const shipping = session.collected_information?.shipping_details ?? session.shipping_details
+      const billing = session.customer_details
       const order = await db.order.update({
         where: { id: orderId },
         data: {
           paymentStatus: 'paid',
-          orderStatus: 'confirmed'
-        },
+          orderStatus: 'confirmed',
+          ...(shipping ? { shippingAddress: JSON.stringify({ name: shipping.name, ...shipping.address }) } : {}),
+          ...(billing?.address ? { billingAddress: JSON.stringify({ name: billing.name, ...billing.address }) } : {}),        },
         include: {
           items: true
         }

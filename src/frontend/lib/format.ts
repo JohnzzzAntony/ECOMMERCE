@@ -19,9 +19,7 @@ export function discountPercent(regular: number, sale: number): number {
   return Math.round(((regular - sale) / regular) * 100)
 }
 
-export function effectivePrice(p: { onSale: boolean; salePrice: number | null; regularPrice: number }): number {
-  return p.onSale && p.salePrice ? p.salePrice : p.regularPrice
-}
+export { effectivePrice } from '@/shared/storefront'
 
 export function formatDate(date: string | Date): string {
   return new Date(date).toLocaleDateString('en-AE', {

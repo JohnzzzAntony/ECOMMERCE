@@ -15,7 +15,7 @@ export function CartDrawer() {
       <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ShoppingCart size={18} /> Enquiry Cart ({cart.length})
+            <ShoppingCart size={18} /> Cart ({cart.length})
           </SheetTitle>
         </SheetHeader>
 
@@ -24,8 +24,8 @@ export function CartDrawer() {
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary">
               <ShoppingCart size={28} className="text-muted-foreground" />
             </div>
-            <p className="text-sm font-medium">Your enquiry cart is empty</p>
-            <p className="text-xs text-muted-foreground">Add products to submit an enquiry to our team.</p>
+            <p className="text-sm font-medium">Your cart is empty</p>
+            <p className="text-xs text-muted-foreground">Add products to buy them or request a quote.</p>
             <button
               onClick={() => { setCartDrawerOpen(false); navigate('products') }}
               className="mt-2 rounded-lg bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-dark"
@@ -73,15 +73,23 @@ export function CartDrawer() {
 
             <div className="border-t border-border p-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-medium">Estimated Total</span>
+                <span className="text-sm font-medium">Total</span>
                 <span className="text-lg font-bold text-brand-teal-dark">{formatAED(cartTotal())}</span>
               </div>
-              <button
-                onClick={() => { setCartDrawerOpen(false); navigate('cart') }}
-                className="w-full rounded-lg bg-brand-teal py-2.5 text-sm font-semibold text-white hover:bg-brand-teal-dark"
-              >
-                View Cart & Submit Enquiry
-              </button>
+              <div className="grid gap-2">
+                <button
+                  onClick={() => window.location.assign('/checkout')}
+                  className="w-full rounded-lg bg-brand-teal py-2.5 text-sm font-semibold text-white hover:bg-brand-teal-dark"
+                >
+                  Checkout
+                </button>
+                <button
+                  onClick={() => { setCartDrawerOpen(false); navigate('cart') }}
+                  className="w-full rounded-lg border border-brand-teal py-2.5 text-sm font-semibold text-brand-teal hover:bg-brand-teal hover:text-white"
+                >
+                  View cart
+                </button>
+              </div>
             </div>
           </>
         )}

@@ -1,6 +1,7 @@
 'use client'
 
-import { ShoppingCart, Heart, GitCompare, Eye } from 'lucide-react'
+import { ShoppingCart, Heart, GitCompare, Eye, Zap } from 'lucide-react'
+import { buyNowHref } from '@/shared/storefront'
 import { useStore } from '@/frontend/store/use-store'
 import { StarRating } from '@/frontend/components/product/star-rating'
 import { formatAED, discountPercent, effectivePrice } from '@/frontend/lib/format'
@@ -23,7 +24,7 @@ export function QuickViewModal() {
 
   const handleAddToCart = () => {
     addToCart(product, 1)
-    toast.success(`${product.name} added to enquiry cart`)
+    toast.success(`${product.name} added to cart`)
     setQuickViewProduct(null)
   }
 
@@ -95,7 +96,14 @@ export function QuickViewModal() {
                 disabled={!product.inStock}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-teal py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:bg-muted"
               >
-                <ShoppingCart size={16} /> Add to Enquiry Cart
+                <ShoppingCart size={16} /> Add to cart
+              </button>
+              <button
+                onClick={() => window.location.assign(buyNowHref(product.slug))}
+                disabled={!product.inStock}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-ink py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-ink/90 disabled:cursor-not-allowed disabled:bg-muted"
+              >
+                <Zap size={16} /> Buy now
               </button>
               <div className="grid grid-cols-3 gap-2">
                 <button

@@ -1,14 +1,14 @@
 'use client'
 // Client pieces of commerce sections: add to cart, quantity picker and the cart page. Uses the store's existing
-// cart (Zustand, persisted) and enquiry checkout, so carts are shared with the rest of the storefront.
+// cart (Zustand, persisted), card checkout (/checkout) and quote requests, so carts are shared with the rest of the storefront.
 import { useEffect, useState } from 'react'
-import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react'
+import { Lock, Minus, Plus, ShoppingBag, Trash2, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStore } from '@/frontend/store/use-store'
 import { api } from '@/frontend/lib/api'
 import { effectivePrice } from '@/frontend/lib/format'
 import { sizedImage } from '@/frontend/lib/image'
-import { formatPrice } from '@/shared/storefront'
+import { buyNowHref, formatPrice } from '@/shared/storefront'
 import type { Product } from '@/shared/types'
 
 const primary = { background: 'var(--color-primary, #0D6B8C)', color: 'var(--color-on-primary, #fff)' }
@@ -45,6 +45,9 @@ export function ProductPurchase({ product, label, currency }: { product: Product
             onClick={() => { addToCart(product, qty); toast.success(`${product.name} added to cart`) }}>
             <ShoppingBag className="size-4" aria-hidden /> {label}
           </button>
+          <a href={buyNowHref(product.slug, qty)} className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-2,8px)] border border-current px-6 font-semibold hover:opacity-80">
+            <Zap className="size-4" aria-hidden /> Buy now
+          </a>
         </div>
       ) : <p className="font-medium opacity-70">Out of stock</p>}
     </div>
@@ -98,6 +101,8 @@ export function CartContents({ emptyMessage, checkoutLabel, currency }: { emptyM
       </ul>
       <form onSubmit={submit} className="space-y-3 rounded-[var(--radius-3,12px)] border border-current/10 p-5">
         <p className="flex justify-between text-lg font-semibold"><span>Total</span><span>{formatPrice(total, currency)}</span></p>
+        <a href="/checkout" style={primary} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-2,8px)] font-semibold hover:opacity-90"><Lock className="size-4" aria-hidden /> Checkout</a>
+        <p className="pt-2 text-sm font-medium">Or request a quote</p>
         {([['customerName', 'Name', 'text', true], ['email', 'Email', 'email', true], ['phone', 'Phone', 'tel', true], ['company', 'Company', 'text', false]] as const).map(([key, label, type, required]) => (
           <label key={key} className="block text-sm">
             <span className="mb-1 block font-medium">{label}{required && ' *'}</span>
@@ -105,7 +110,7 @@ export function CartContents({ emptyMessage, checkoutLabel, currency }: { emptyM
           </label>
         ))}
         <label className="block text-sm"><span className="mb-1 block font-medium">Notes</span><textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={3} className="w-full rounded-md border border-current/20 bg-transparent px-3 py-2" /></label>
-        <button type="submit" disabled={sending} style={primary} className="min-h-11 w-full rounded-[var(--radius-2,8px)] font-semibold hover:opacity-90 disabled:opacity-60">{sending ? 'Sending…' : checkoutLabel}</button>
+        <button type="submit" disabled={sending} className="min-h-11 w-full rounded-[var(--radius-2,8px)] border border-current font-semibold hover:opacity-80 disabled:opacity-60">{sending ? 'Sending…' : checkoutLabel}</button>
       </form>
     </div>
   )

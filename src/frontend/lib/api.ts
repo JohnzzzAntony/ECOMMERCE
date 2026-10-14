@@ -109,6 +109,13 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }),
+  /** Creates an unpaid order priced on the server and returns Stripe's payment page URL. */
+  checkout: (data: { items: { productId: string; qty: number }[]; customerName: string; email: string; phone?: string; notes?: string; returnPath?: string }) =>
+    fetchJson<{ url: string; orderNumber: string }>('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
   enquiry: (data: any) =>
     fetchJson<{ ok: boolean; enquiry: Enquiry }>('/api/enquiries', {
       method: 'POST',

@@ -147,11 +147,11 @@ export function CompareView() {
                       <td key={p.id} className="p-4">
                         <div className="flex flex-col gap-2">
                           <button
-                            onClick={() => { addToCart(p, 1); toast.success('Added to enquiry cart') }}
+                            onClick={() => { addToCart(p, 1); toast.success('Added to cart') }}
                             disabled={!p.inStock}
                             className="flex items-center justify-center gap-1.5 rounded-lg bg-brand-teal px-3 py-2 text-xs font-semibold text-white hover:bg-brand-teal-dark disabled:bg-muted"
                           >
-                            <ShoppingCart size={13} /> Add to Enquiry
+                            <ShoppingCart size={13} /> Add to cart
                           </button>
                           <button
                             onClick={() => navigate('product-detail', { slug: p.slug })}

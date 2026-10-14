@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Minus, Plus, Trash2, ShoppingBag, Send, ArrowRight, CreditCard, Wallet, Banknote, CheckCircle2 } from 'lucide-react'
+import { Minus, Plus, Trash2, ShoppingBag, Send, ArrowRight, CreditCard, Wallet, Banknote, CheckCircle2, Lock } from 'lucide-react'
 import { useStore } from '@/frontend/store/use-store'
 import { api } from '@/frontend/lib/api'
 import { formatAED, effectivePrice, discountPercent } from '@/frontend/lib/format'
@@ -179,10 +179,9 @@ export function CartView() {
           <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
             <ShoppingBag className="h-12 w-12 text-brand-teal" />
           </div>
-          <h1 className="text-3xl font-bold text-brand-ink">Your Enquiry Cart is Empty</h1>
+          <h1 className="text-3xl font-bold text-brand-ink">Your Cart is Empty</h1>
           <p className="mt-3 max-w-md text-muted-foreground">
-            Browse our catalogue of premium medical equipment and add items to your enquiry cart.
-            Our team will get back to you with pricing and availability.
+            Browse our catalogue of premium medical equipment and add items to your cart.
           </p>
           <Button
             onClick={() => navigate('products')}
@@ -202,10 +201,10 @@ export function CartView() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-brand-ink sm:text-4xl">
-          Your Enquiry Cart
+          Your Cart
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Submit your enquiry and our team will contact you with pricing &amp; availability.
+          Pay securely by card, or request a quote from our team.
         </p>
       </div>
 
@@ -458,22 +457,31 @@ export function CartView() {
                   <span className="text-xl font-bold text-brand-teal-dark">{formatAED(total)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  * Indicative total. Final pricing will be confirmed by our team.
+                  * Promo codes and loyalty points apply to quote requests; card checkout charges catalogue prices.
                 </p>
 
                 <div className="space-y-2 pt-2">
                   <Button
-                    onClick={openEnquiryDialog}
+                    onClick={() => window.location.assign('/checkout')}
                     className="w-full bg-brand-teal text-white hover:bg-brand-teal-dark"
                     size="lg"
                   >
+                    <Lock className="mr-2 h-4 w-4" />
+                    Checkout
+                  </Button>
+                  <Button
+                    onClick={openEnquiryDialog}
+                    variant="outline"
+                    className="w-full border-brand-teal text-brand-teal hover:bg-brand-teal hover:text-white"
+                    size="lg"
+                  >
                     <Send className="mr-2 h-4 w-4" />
-                    Submit Enquiry
+                    Request a quote
                   </Button>
                   <Button
                     onClick={() => navigate('products')}
-                    variant="outline"
-                    className="w-full border-brand-teal text-brand-teal hover:bg-brand-teal hover:text-white"
+                    variant="ghost"
+                    className="w-full text-brand-teal"
                     size="lg"
                   >
                     Continue Shopping
@@ -510,8 +518,8 @@ export function CartView() {
                   </Badge>
                 </div>
                 <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                  This is an enquiry-based checkout. Our team will confirm payment terms and availability
-                  before processing.
+                  Checkout takes card payments through Stripe. For other payment options, request a quote and
+                  our team will confirm terms.
                 </p>
               </CardContent>
             </Card>

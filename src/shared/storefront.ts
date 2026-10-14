@@ -37,3 +37,11 @@ export type RenderedPage = {
 
 export const formatPrice = (value: number, currency = 'AED') =>
   `${new Intl.NumberFormat('en-AE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value)} ${currency}`
+
+/** Price a shopper pays: the sale price while a sale is on, else the regular price. */
+export function effectivePrice(p: { onSale: boolean; salePrice: number | null; regularPrice: number }): number {
+  return p.onSale && p.salePrice ? p.salePrice : p.regularPrice
+}
+
+/** Checkout page for buying one product straight away. */
+export const buyNowHref = (slug: string, qty = 1) => `/checkout?product=${encodeURIComponent(slug)}&qty=${qty}`

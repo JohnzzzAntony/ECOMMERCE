@@ -258,7 +258,7 @@ function ClassicHeader(catalog: Catalog) {
               aria-label="Cart"
             >
               <ShoppingCart size={20} />
-              <span className="hidden text-[10px] font-medium sm:block">Enquiry</span>
+              <span className="hidden text-[10px] font-medium sm:block">Cart</span>
               {cartCount() > 0 && (
                 <span className="absolute right-1 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-teal px-1 text-[9px] font-bold text-white">
                   {cartCount()}
