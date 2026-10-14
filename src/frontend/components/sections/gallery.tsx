@@ -1,4 +1,4 @@
-import { Container, Heading, SectionShell, SmartImage, SmartLink, grid, settingsOf, type SectionProps } from './shared'
+import { Card, Container, Heading, SectionShell, SmartImage, SmartLink, cardLink, grid, settingsOf, type SectionProps } from './shared'
 import type { ImageValue, LinkValue } from '@/shared/sections/fields'
 
 export default function Gallery({ section }: SectionProps) {
@@ -14,10 +14,13 @@ export default function Gallery({ section }: SectionProps) {
             if (!item.image) return null
             return (
               <li key={b.id}>
-                <figure className="space-y-2">
-                  <SmartLink link={item.link}><SmartImage image={item.image} sizes="(min-width: 1024px) 33vw, 50vw" className="w-full rounded-[var(--radius-3,12px)]" /></SmartLink>
-                  {item.caption && <figcaption className="text-sm opacity-80">{item.caption}</figcaption>}
-                </figure>
+                <SmartLink link={item.link} className={cardLink}>
+                  <figure className="h-full">
+                    <Card media={<SmartImage image={item.image} fill sizes="(min-width: 1024px) 33vw, 50vw" />}>
+                      {item.caption && <figcaption className="text-sm opacity-80">{item.caption}</figcaption>}
+                    </Card>
+                  </figure>
+                </SmartLink>
               </li>
             )
           })}

@@ -1,4 +1,4 @@
-import { Container, Heading, SectionShell, SmartImage, grid, settingsOf, type SectionProps } from './shared'
+import { Card, Container, Heading, SectionShell, SmartImage, cardLink, grid, settingsOf, type SectionProps } from './shared'
 import type { ImageValue } from '@/shared/sections/fields'
 
 export default function CollectionList({ section, data }: SectionProps) {
@@ -17,9 +17,10 @@ export default function CollectionList({ section, data }: SectionProps) {
               const image = o?.image ?? (c.image ? { url: c.image, alt: '', decorative: true, width: 800, height: 600 } : null)
               return (
                 <li key={c.slug}>
-                  <a href={`/collections/${encodeURIComponent(c.slug)}`} className="group block overflow-hidden rounded-[var(--radius-3,12px)] border border-black/5">
-                    <div className="relative aspect-[4/3] bg-black/5">{image && <SmartImage image={{ ...image, alt: '' }} fill sizes="(min-width: 1024px) 33vw, 50vw" className="transition-transform group-hover:scale-105" />}</div>
-                    <div className="p-4"><span className="font-semibold">{o?.label || c.name}</span><span className="ml-2 text-sm opacity-60">{c.count} products</span></div>
+                  <a href={`/collections/${encodeURIComponent(c.slug)}`} className={cardLink}>
+                    <Card media={<SmartImage image={image ? { ...image, alt: '' } : null} fill sizes="(min-width: 1024px) 33vw, 50vw" />}>
+                      <span className="font-semibold">{o?.label || c.name}</span><span className="ml-2 text-sm opacity-60">{c.count} products</span>
+                    </Card>
                   </a>
                 </li>
               )

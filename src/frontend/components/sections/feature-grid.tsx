@@ -1,4 +1,4 @@
-import { Container, Heading, RichTextView, SectionShell, SmartImage, SmartLink, grid, settingsOf, type SectionProps } from './shared'
+import { Card, Container, Heading, RichTextView, SectionShell, SmartImage, SmartLink, grid, settingsOf, type SectionProps } from './shared'
 import type { ImageValue, LinkValue, RichText } from '@/shared/sections/fields'
 
 export default function FeatureGrid({ section }: SectionProps) {
@@ -18,10 +18,11 @@ export default function FeatureGrid({ section }: SectionProps) {
           {section.blocks.map((b) => {
             const f = b.settings as { icon: ImageValue; title: string; body: string; link: LinkValue }
             return (
-              <li key={b.id} className="space-y-3">
-                {f.icon && <SmartImage image={f.icon} sizes="96px" className="max-h-16 w-auto" />}
-                {f.title && <Heading level={itemLevel} className="text-lg"><SmartLink link={f.link}>{f.title}</SmartLink></Heading>}
-                {f.body && <p className="whitespace-pre-line text-sm leading-relaxed opacity-80">{f.body}</p>}
+              <li key={b.id}>
+                <Card media={f.icon && <SmartImage image={f.icon} sizes="128px" className="max-h-24 w-auto" />}>
+                  {f.title && <Heading level={itemLevel} className="text-lg"><SmartLink link={f.link}>{f.title}</SmartLink></Heading>}
+                  {f.body && <p className="whitespace-pre-line text-sm leading-relaxed opacity-80">{f.body}</p>}
+                </Card>
               </li>
             )
           })}

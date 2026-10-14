@@ -161,6 +161,21 @@ export function Button({ label, link, variant = 'primary', className = '' }: { l
   )
 }
 
+/** Bordered card with an inset 4:3 media panel and a caption (no panel when `media` is empty); on hover the border brightens, the card lifts and the media zooms. Wrap it in a link to make it clickable. */
+export function Card({ media, children }: { media: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="group/card h-full rounded-[calc(var(--radius-3,12px)+6px)] border border-current/10 bg-current/[0.03] p-1.5 transition-[border-color,translate,box-shadow] duration-500 ease-out hover:-translate-y-0.5 hover:border-current/25 hover:shadow-[0_16px_40px_-16px_rgb(0_0_0/0.45)] motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+      {media && <div className="relative grid aspect-[4/3] place-items-center overflow-hidden rounded-[var(--radius-3,12px)] bg-current/[0.06] *:transition-transform *:duration-700 *:ease-out group-hover/card:*:scale-[1.06] motion-reduce:*:transition-none motion-reduce:group-hover/card:*:scale-100">
+        {media}
+      </div>}
+      {children && <div className="space-y-1 px-3.5 pb-3 pt-3.5">{children}</div>}
+    </div>
+  )
+}
+
+/** Classes for a link wrapping a Card. */
+export const cardLink = 'block h-full rounded-[calc(var(--radius-3,12px)+6px)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2'
+
 /** Props for a responsive grid (class s-grid; columns from settings and tablet/mobile overrides). */
 export const grid = (n: unknown, mobileDefault = 1) => ({
   className: 's-grid grid gap-6',
