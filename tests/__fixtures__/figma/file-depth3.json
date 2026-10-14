@@ -1,0 +1,37 @@
+{
+  "name": "Medi Store Redesign",
+  "lastModified": "2026-10-10T09:30:00Z",
+  "version": "2130034450",
+  "editorType": "figma",
+  "thumbnailUrl": "https://s3-alpha.figma.com/thumbnails/medi.png",
+  "document": {
+    "id": "0:0", "name": "Document", "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "0:1", "name": "Web", "type": "CANVAS",
+        "flowStartingPoints": [{ "nodeId": "1:1", "name": "Shop flow" }],
+        "children": [
+          { "id": "1:1", "name": "Home / Desktop", "type": "FRAME", "absoluteBoundingBox": { "x": 0, "y": 0, "width": 1440, "height": 3200 }, "children": [] },
+          { "id": "1:2", "name": "Home / Mobile", "type": "FRAME", "absoluteBoundingBox": { "x": 1600, "y": 0, "width": 375, "height": 2400 }, "children": [] },
+          { "id": "1:3", "name": "Product", "type": "FRAME", "absoluteBoundingBox": { "x": 0, "y": 3400, "width": 1440, "height": 2000 }, "children": [] },
+          { "id": "1:4", "name": "Product", "type": "FRAME", "absoluteBoundingBox": { "x": 1600, "y": 3400, "width": 390, "height": 1800 }, "children": [] },
+          { "id": "1:5", "name": "About us", "type": "FRAME", "absoluteBoundingBox": { "x": 0, "y": 5600, "width": 1440, "height": 1600 }, "children": [] },
+          { "id": "1:9", "name": "Sticky note", "type": "TEXT", "absoluteBoundingBox": { "x": -400, "y": 0, "width": 200, "height": 40 } },
+          {
+            "id": "2:1", "name": "Checkout", "type": "SECTION",
+            "children": [
+              { "id": "2:2", "name": "Cart", "type": "FRAME", "absoluteBoundingBox": { "x": 0, "y": 8000, "width": 1280, "height": 1400 }, "children": [] },
+              { "id": "2:3", "name": "Divider", "type": "RECTANGLE" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "0:2", "name": "Archive", "type": "CANVAS", "flowStartingPoints": [],
+        "children": [
+          { "id": "3:1", "name": "Old home", "type": "FRAME", "absoluteBoundingBox": { "x": 0, "y": 0, "width": 1024, "height": 900 }, "children": [] }
+        ]
+      }
+    ]
+  }
+}

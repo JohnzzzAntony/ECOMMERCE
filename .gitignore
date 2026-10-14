@@ -57,3 +57,15 @@ server.log
 .env.*
 !.env.example
 .firecrawl/
+
+# Local throwaway test database (scripts/test-db.ts)
+.test-db/
+# Local design storage driver (development only)
+.design-storage/
+# Playwright
+test-results/
+playwright-report/
+.lighthouseci/
+# Separate Next.js build dirs for E2E and Lighthouse runs
+.next-e2e/
+.next-lh/

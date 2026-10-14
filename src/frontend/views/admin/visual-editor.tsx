@@ -4,7 +4,7 @@
 // to type over it; select any element to change its image, link, colors, size, or to duplicate,
 // move or remove it. The frame's DOM is the working copy; every change is serialized back to HTML.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Copy, CornerLeftUp, Trash2, Undo2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, CornerLeftUp, Redo2, Trash2, Undo2 } from 'lucide-react'
 import { Button } from '@/frontend/components/ui/button'
 import { Input } from '@/frontend/components/ui/input'
 import { Label } from '@/frontend/components/ui/label'
@@ -119,6 +119,7 @@ export function VisualEditor({ html, css = '', themeCssUrl = '', bodyClass = '',
   latestChange.current = onChange
   const [seed, setSeed] = useState(html)
   const [history, setHistory] = useState<string[]>([])
+  const [future, setFuture] = useState<string[]>([])
   const [selection, setSelection] = useState<Selection | null>(null)
   const themeCss = useStylesheet(themeCssUrl)
 
@@ -146,6 +147,7 @@ export function VisualEditor({ html, css = '', themeCssUrl = '', bodyClass = '',
         // Put the page's own scripts back where they were.
         const next = e.data.html.replace(PLACEHOLDER, (_: string, n: string) => scripts[Number(n)] ?? '').trim()
         setHistory((h) => [...h.slice(-49), emitted.current])
+        setFuture([])
         emitted.current = next
         latestChange.current(next)
       }
@@ -159,7 +161,15 @@ export function VisualEditor({ html, css = '', themeCssUrl = '', bodyClass = '',
     const prev = history.at(-1)
     if (prev === undefined) return
     setHistory((h) => h.slice(0, -1))
+    setFuture((f) => [...f, emitted.current])
     latestChange.current(prev) // the effect above reloads the frame with it
+  }
+  const redo = () => {
+    const next = future.at(-1)
+    if (next === undefined) return
+    setFuture((f) => f.slice(0, -1))
+    setHistory((h) => [...h, emitted.current])
+    latestChange.current(next)
   }
 
   const s = selection
@@ -172,8 +182,9 @@ export function VisualEditor({ html, css = '', themeCssUrl = '', bodyClass = '',
       </div>
       <aside className="w-64 shrink-0 space-y-4 overflow-y-auto text-sm">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">Click to select · type to edit text</span>
+          <span className="flex-1 text-xs text-muted-foreground">Click to select · type to edit text</span>
           <Button variant="ghost" size="icon" className="size-7" disabled={!history.length} onClick={undo} aria-label="Undo" title="Undo"><Undo2 className="size-4" /></Button>
+          <Button variant="ghost" size="icon" className="size-7" disabled={!future.length} onClick={redo} aria-label="Redo" title="Redo"><Redo2 className="size-4" /></Button>
         </div>
         {!s ? (
           <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">

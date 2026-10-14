@@ -4,9 +4,10 @@ import type { Theme } from '@prisma/client'
 import { db } from './db'
 import { HttpError } from './auth'
 import { invalidateAll, memo } from './memo'
+import { adapterFor, buildReport } from './theme-adapters'
 import {
   DEFAULT_MENUS, DEFAULT_SECTIONS, DEFAULT_THEME, MENU_HANDLES, mergeSchema, resolveSettings, SECTION_TYPES, sectionSchema,
-  type MenuHandle, type MenuItem, type StorefrontTheme, type ThemeSection, type ThemeSettingDef,
+  type MenuHandle, type MenuItem, type StorefrontTheme, type ThemeDoc, type ThemeReport, type ThemeSection, type ThemeSettingDef,
   type ThemeSettings, type ThemeSettingType,
 } from '@/shared/theme'
 
@@ -157,17 +158,81 @@ async function loadStorefrontTheme(): Promise<StorefrontTheme> {
   }
 }
 
-/** Admin view of a theme with parsed JSON columns. */
+/** The theme's unpublished draft, or null. Validated against the theme schema like any edit. */
+export function themeDraft(theme: Pick<Theme, 'draft' | 'settingsSchema'>): ThemeDoc | null {
+  if (!theme.draft) return null
+  const raw = parse<Record<string, unknown> | null>(theme.draft, null)
+  if (!isRecord(raw)) return null
+  return cleanDoc(raw, themeSchema(theme))
+}
+
+/** Validate an editable document (draft save, publish, rollback). */
+export function cleanDoc(input: Record<string, unknown>, schema: ThemeSettingDef[]): ThemeDoc {
+  if (input.sections !== undefined && !Array.isArray(input.sections)) throw new HttpError(400, 'sections must be a list')
+  if (input.css !== undefined && typeof input.css !== 'string') throw new HttpError(400, 'css must be text')
+  const css = (input.css as string | undefined) ?? ''
+  if (css.length > 3_000_000) throw new HttpError(400, 'CSS is too large (max 3 MB)')
+  return { settings: cleanSettings(input.settings, schema), sections: cleanSections(input.sections), css }
+}
+
+function storedReport(theme: Pick<Theme, 'report' | 'kind'>, counts: ThemeReport['counts']): ThemeReport {
+  const saved = parse<Partial<ThemeReport>>(theme.report, {})
+  if (saved.adapter && saved.level) return { ...saved, counts: saved.counts ?? counts } as ThemeReport
+  // Themes installed before reports existed (and the built-in theme).
+  const adapter = adapterFor(theme.kind === 'html' ? 'html' : 'native')
+  return buildReport(adapter, { confidence: 1, detected: theme.kind === 'html' ? 'Static HTML/CSS/JS' : 'theme.json manifest' }, counts, [])
+}
+
+/** Admin view of a theme with parsed JSON columns. Editable values come from the draft when there is one. */
 export function adminTheme(theme: Theme & { _count?: { pages: number } }) {
   const schema = themeSchema(theme)
-  return {
-    id: theme.id, slug: theme.slug, name: theme.name, version: theme.version, author: theme.author,
-    description: theme.description, kind: theme.kind, isActive: theme.isActive, css: theme.css,
-    createdAt: theme.createdAt, updatedAt: theme.updatedAt, pageCount: theme._count?.pages ?? 0,
-    schema,
+  const draft = themeDraft(theme)
+  const published: ThemeDoc = {
     settings: resolveSettings(schema, parse(theme.settings, {})),
     sections: cleanSections(parse(theme.sections, [])),
+    css: theme.css,
   }
+  const doc = draft ? { ...draft, settings: resolveSettings(schema, draft.settings) } : published
+  const pageCount = theme._count?.pages ?? 0
+  return {
+    id: theme.id, slug: theme.slug, name: theme.name, version: theme.version, author: theme.author,
+    description: theme.description, kind: theme.kind, isActive: theme.isActive,
+    createdAt: theme.createdAt, updatedAt: theme.updatedAt, pageCount,
+    revision: theme.revision, hasDraft: !!draft, sourceUrl: theme.sourceUrl,
+    report: storedReport(theme, { pages: pageCount, sections: published.sections.length, settings: schema.length, menus: 0 }),
+    schema,
+    ...doc,
+    published,
+  }
+}
+
+/** Reject writes based on an older revision than the stored one (another tab or admin saved meanwhile). */
+export function checkRevision(theme: Pick<Theme, 'revision'>, base: unknown) {
+  if (base === undefined) return
+  if (typeof base !== 'number' || base !== theme.revision) {
+    throw new HttpError(409, 'This theme was changed in another window. Reload to get the latest version.')
+  }
+}
+
+/**
+ * Make a document live: write it to the theme's live columns, record a revision and clear the draft,
+ * in one transaction (visitors see the old theme or the new one, never a mix).
+ */
+export async function publishDoc(themeId: string, doc: ThemeDoc, opts: { note: string; author?: string; activate?: boolean }) {
+  const updated = await db.$transaction(async (tx) => {
+    if (opts.activate) await tx.theme.updateMany({ where: { isActive: true, NOT: { id: themeId } }, data: { isActive: false } })
+    const last = await tx.themeRevision.findFirst({ where: { themeId }, orderBy: { number: 'desc' }, select: { number: true } })
+    const settings = JSON.stringify(doc.settings), sections = JSON.stringify(doc.sections)
+    await tx.themeRevision.create({ data: { themeId, number: (last?.number ?? 0) + 1, note: opts.note.slice(0, 200), author: opts.author, settings, sections, css: doc.css } })
+    return tx.theme.update({
+      where: { id: themeId },
+      data: { settings, sections, css: doc.css, draft: null, revision: { increment: 1 }, ...(opts.activate ? { isActive: true } : {}) },
+      include: { _count: { select: { pages: true } } },
+    })
+  }, { timeout: 30_000 })
+  if (opts.activate) await applyThemeMenus(themeId)
+  invalidateAll()
+  return updated
 }
 
 // Each theme keeps its own copy of the menus (rows with handle "<handle>@<themeId>"), so menus that come

@@ -27,6 +27,7 @@ model User {
   reviews    ProductReview[]
   addresses  Address[]
   cartItems  CartItem[]
+  storeMemberships StoreMember[]
 }
 
 model Address {
@@ -373,12 +374,36 @@ model Theme {
   settings       String   @default("{}") // JSON: values keyed by setting id
   sections       String   @default("[]") // JSON: homepage ThemeSection[]
   css            String   @default("")
+  // Unpublished edits (JSON ThemeDoc: settings, sections, css). The columns above are what the store shows.
+  draft          String?
+  // Bumped on every draft save and publish; writes carry the revision they started from (optimistic locking).
+  revision       Int      @default(0)
+  report         String   @default("{}") // JSON: ThemeReport from install (adapter, compatibility level, warnings)
+  sourceUrl      String?  // untouched copy of the uploaded zip
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  pages Page[]
+  pages     Page[]
+  revisions ThemeRevision[]
 
   @@index([isActive])
+}
+
+// Snapshot of a theme's live settings/sections/CSS, recorded on every publish and rollback.
+model ThemeRevision {
+  id        String   @id @default(cuid())
+  themeId   String
+  number    Int
+  note      String   @default("")
+  author    String?
+  settings  String
+  sections  String
+  css       String
+  createdAt DateTime @default(now())
+
+  theme Theme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([themeId, number])
 }
 
 // Custom content page. Pages imported with a theme are removed with it; admin-created pages have no theme.
@@ -422,4 +447,352 @@ model ProductField {
   sortOrder        Int      @default(0)
   showOnStorefront Boolean  @default(true)
   createdAt        DateTime @default(now())
+}
+
+// ---------- Stores (tenants) ----------
+
+// Where a store's storefront design comes from: Figma imports (default for new stores) or the theme system.
+enum DesignSource {
+  FIGMA
+  THEME
+}
+
+// A tenant. Existing data belongs to the 'legacy' store (created by migration 1_store); requests whose host
+// matches no store domain resolve to it.
+model Store {
+  id            String       @id @default(cuid())
+  slug          String       @unique
+  name          String
+  domain        String?      @unique // hostname without port, lowercase
+  designSource  DesignSource @default(FIGMA)
+  // Per-store override of the FEATURE_THEMES env flag; null follows the global flag.
+  themesEnabled Boolean?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  members          StoreMember[]
+  figmaConnection  FigmaConnection?
+  figmaOAuthStates FigmaOAuthState[]
+  auditLogs        AuditLog[]
+  figmaFiles       FigmaFile[]
+  designImports    DesignImport[]
+  sectionMappings  SectionMapping[]
+  designSystems    DesignSystem[]
+  fonts            Font[]
+  assets           Asset[]
+  pages            StorePage[]
+  pageVersions     StorePageVersion[]
+}
+
+// Store-scoped tables below carry storeId and are protected twice: storeDb() (src/backend/lib/tenancy.ts)
+// injects storeId into every query, and Postgres row level security (migration 2_figma_connection) hides rows
+// of other stores unless app.store_id is set to the row's store.
+
+enum StoreRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+// A user's role in a store. OWNER/ADMIN manage connections; EDITOR imports and edits designs; VIEWER reads.
+model StoreMember {
+  id        String    @id @default(cuid())
+  storeId   String
+  userId    String
+  role      StoreRole @default(VIEWER)
+  createdAt DateTime  @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, userId])
+  @@index([userId])
+}
+
+enum FigmaAuthType {
+  OAUTH
+  PAT
+}
+
+enum FigmaConnectionStatus {
+  ACTIVE
+  NEEDS_REAUTH
+}
+
+// The store's Figma account. Tokens are envelope-encrypted (src/backend/lib/figma/crypto.ts) with the key
+// version in keyVersion; they never leave the server.
+model FigmaConnection {
+  id              String                @id @default(cuid())
+  storeId         String                @unique
+  figmaUserId     String
+  handle          String
+  email           String?
+  authType        FigmaAuthType
+  accessTokenEnc  String
+  refreshTokenEnc String?
+  keyVersion      Int
+  expiresAt       DateTime? // null for personal access tokens (expiry unknown to the API)
+  scopes          String                @default("")
+  status          FigmaConnectionStatus @default(ACTIVE)
+  createdBy       String
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  store Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  files FigmaFile[]
+}
+
+// Pending OAuth authorization: single-use, 10-minute TTL, bound to store + user + session.
+// id is the SHA-256 of the state sent to Figma, so a database read cannot replay a flow.
+model FigmaOAuthState {
+  id           String   @id
+  storeId      String
+  userId       String
+  sessionHash  String
+  codeVerifier String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  storeId    String
+  actorId    String?
+  action     String // e.g. figma.connect, figma.disconnect, figma.reauth_required
+  entityType String
+  entityId   String?
+  diff       Json     @default("{}")
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt])
+}
+
+// A Figma file (or branch) a store has imported from. fileKey is the main file; branchKey is "" for the main file.
+model FigmaFile {
+  id           String   @id @default(cuid())
+  storeId      String
+  connectionId String?
+  fileKey      String
+  branchKey    String   @default("")
+  name         String
+  version      String
+  lastModified DateTime
+  // Re-sync: Figma webhook (v2) for this file, its passcode (SHA-256) and the newest version seen remotely.
+  webhookId           String?
+  webhookPasscodeHash String?
+  latestVersion       String?
+  lastCheckedAt       DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  store      Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  connection FigmaConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  imports    DesignImport[]
+
+  @@unique([storeId, fileKey, branchKey])
+}
+
+enum DesignImportStatus {
+  QUEUED
+  FETCHING
+  NORMALIZING
+  TOKENS
+  MAPPING
+  ASSETS
+  REVIEW
+  INSTALLED
+  FAILED
+}
+
+// One import of selected frames. pageAssignments holds the validated ImportPlan pages (src/shared/design-plan.ts).
+model DesignImport {
+  id              String             @id @default(cuid())
+  storeId         String
+  fileId          String
+  figmaVersion    String
+  status          DesignImportStatus @default(QUEUED)
+  selectedNodeIds String[]
+  pageAssignments Json
+  error           String?
+  // Pipeline output (src/backend/lib/design-import/pipeline.ts): snapshots in storage, review data in `result`.
+  kind            DesignImportKind   @default(INSTALL)
+  rawSnapshotKey  String?
+  irSnapshotKey   String?
+  warnings        Json               @default("[]")
+  stats           Json               @default("{}")
+  result          Json?
+  // Job queue: claimed rows get lockedAt; failed stages retry after runAfter until attempts runs out.
+  attempts        Int                @default(0)
+  lockedAt        DateTime?
+  runAfter        DateTime           @default(now())
+  installedAt     DateTime?
+  createdBy       String
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  store Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  file  FigmaFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt])
+  @@index([fileId])
+  @@index([status, runAfter])
+}
+
+enum DesignImportKind {
+  INSTALL
+  RESYNC
+}
+
+// Section type and layer→field choices an admin made in review, reused when the same Figma node is imported again.
+model SectionMapping {
+  id          String   @id @default(cuid())
+  storeId     String
+  fileKey     String
+  nodeId      String
+  sectionType String
+  fieldMap    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, fileKey, nodeId])
+}
+
+enum DesignSystemStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+// Design tokens (src/shared/design-tokens.ts). One ACTIVE row per store drives the storefront's CSS variables.
+model DesignSystem {
+  id        String             @id @default(cuid())
+  storeId   String
+  importId  String?
+  version   Int
+  status    DesignSystemStatus @default(DRAFT)
+  tokens    Json
+  createdBy String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, version])
+  @@index([storeId, status])
+}
+
+enum FontSource {
+  GOOGLE
+  UPLOAD
+}
+
+// Self-hosted font files. files: { weight, style, url, format }[].
+model Font {
+  id        String     @id @default(cuid())
+  storeId   String
+  family    String
+  weights   Int[]
+  source    FontSource
+  files     Json       @default("[]")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, family])
+}
+
+// Image or SVG copied out of Figma (or uploaded), deduplicated per store by content hash.
+model Asset {
+  id           String   @id @default(cuid())
+  storeId      String
+  hash         String
+  sourceNodeId String?
+  storageKey   String
+  url          String
+  mime         String
+  width        Int
+  height       Int
+  variants     Json     @default("[]")
+  alt          String   @default("")
+  altReviewed  Boolean  @default(false)
+  blurhash     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, hash])
+}
+
+// Store page built from sections. HEADER/FOOTER/ANNOUNCEMENT are global sections (reserved slugs _header, _footer,
+// _announcement) shown on every page.
+enum StorePageType {
+  HOME
+  PAGE
+  PRODUCT_TEMPLATE
+  COLLECTION_TEMPLATE
+  CART
+  HEADER
+  FOOTER
+  ANNOUNCEMENT
+}
+
+model StorePage {
+  id                 String        @id @default(cuid())
+  storeId            String
+  type               StorePageType
+  slug               String
+  title              String
+  seo                Json          @default("{}")
+  publishedVersionId String?       @unique
+  sourceFileId       String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  store            Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  versions         StorePageVersion[] @relation("PageVersions")
+  publishedVersion StorePageVersion?  @relation("PublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, slug])
+}
+
+enum PageVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// Immutable once published. At most one DRAFT per page; `revision` guards concurrent draft saves.
+model StorePageVersion {
+  id             String            @id @default(cuid())
+  storeId        String
+  pageId         String
+  version        Int
+  sections       Json
+  status         PageVersionStatus @default(DRAFT)
+  revision       Int               @default(0)
+  sourceImportId String?
+  createdBy      String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  publishedAt    DateTime?
+
+  store       Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  page        StorePage  @relation("PageVersions", fields: [pageId], references: [id], onDelete: Cascade)
+  publishedOf StorePage? @relation("PublishedVersion")
+
+  @@unique([pageId, version])
+  @@index([storeId])
 }

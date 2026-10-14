@@ -21,10 +21,16 @@ export function checkOrigin(request: Request) {
   }
 }
 
-export async function currentUser(request: Request) {
+/** Raw session cookie value, or null. */
+export function sessionToken(request: Request) {
   const cookie = request.headers.get('cookie')?.split(';').map(v => v.trim()).find(v => v.startsWith(`${SESSION_COOKIE}=`))
-  if (!cookie) return null
-  const session = readSession(cookie.slice(SESSION_COOKIE.length + 1))
+  return cookie ? cookie.slice(SESSION_COOKIE.length + 1) : null
+}
+
+export async function currentUser(request: Request) {
+  const token = sessionToken(request)
+  if (!token) return null
+  const session = readSession(token)
   if (!session) return null
   const user = await db.user.findUnique({ where: { id: session.sub } })
   if (!user?.isActive || passwordVersion(user.password) !== session.ver) return null

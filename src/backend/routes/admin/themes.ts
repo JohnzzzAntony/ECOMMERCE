@@ -7,7 +7,7 @@ import { failure, HttpError, requireAdmin, text } from '@/backend/lib/auth'
 import { idParam, readJson, uniqueSlug } from '@/backend/lib/admin-resource'
 import { MAX_ZIP_BYTES, readThemePackage } from '@/backend/lib/theme-package'
 import {
-  activeTheme, adminTheme, applyThemeMenus, cleanSchema, cleanSections, cleanSettings, deleteThemeMenus, menus, saveMenu, themeMenus, themeSchema,
+  activeTheme, adminTheme, checkRevision, cleanDoc, cleanSchema, deleteThemeMenus, menus, publishDoc, saveMenu, themeDraft, themeMenus, themeSchema,
 } from '@/backend/lib/theme-store'
 import { uploadThemeAsset } from '@/backend/integrations/cloudinary'
 import { slugify } from '@/backend/lib/slug'
@@ -34,11 +34,18 @@ export async function POST(request: Request) {
 
     const name = slugify(file.name.replace(/\.zip$/i, '')) || 'theme'
     const folder = `themes/${name}-${Date.now().toString(36)}`
-    const plan = await readThemePackage(new Uint8Array(await file.arrayBuffer()), {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const plan = await readThemePackage(bytes, {
       fileName: file.name,
       upload: (path, data) => uploadThemeAsset(data, folder, path.split('/').pop() ?? 'asset'),
       slugTaken: async (slug) => !!(await db.page.findUnique({ where: { slug }, select: { id: true } })),
     })
+
+    // Keep the upload untouched so it can be downloaded, repaired or re-installed later.
+    let sourceUrl: string | null = null
+    try { sourceUrl = await uploadThemeAsset(bytes, folder, 'original.zip') } catch {
+      plan.warnings.push('The original zip could not be stored, so "Download original" is unavailable for this theme.')
+    }
 
     const slug = await uniqueSlug(plan.name, async (s) => !!(await db.theme.findUnique({ where: { slug: s }, select: { id: true } })))
     const theme = await db.$transaction(async (tx) => {
@@ -49,6 +56,7 @@ export async function POST(request: Request) {
           kind: plan.kind, isActive: activate,
           settingsSchema: JSON.stringify(plan.schema), settings: JSON.stringify(plan.settings),
           sections: JSON.stringify(plan.sections), css: plan.css,
+          report: JSON.stringify({ ...plan.report, warnings: plan.warnings }), sourceUrl,
         },
       })
       if (plan.pages.length) await tx.page.createMany({ data: plan.pages.map((p) => ({ ...p, themeId: created.id })) })
@@ -68,31 +76,43 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * PUT { id, ... } — any of:
+ *   draft: { settings, sections, css }  save unpublished edits (autosave)
+ *   discardDraft: true                   drop unpublished edits
+ *   publish: true                        make the draft live (records a revision)
+ *   activate: true                       publish and make this the store's theme
+ *   name, settingsSchema                 metadata, applied directly
+ * Document writes carry baseRevision (the revision the editor loaded) and fail with 409 when
+ * someone saved in between.
+ */
 export async function PUT(request: Request) {
   try {
-    await requireAdmin(request)
+    const user = await requireAdmin(request)
     const body = await readJson(request)
     const id = text(body.id, 'id', 64, true)
-    const theme = await db.theme.findUnique({ where: { id } })
+    let theme = await db.theme.findUnique({ where: { id } })
     if (!theme) throw new HttpError(404, 'Theme not found')
+    const writesDoc = 'draft' in body || body.discardDraft === true || body.publish === true
+    if (writesDoc) checkRevision(theme, body.baseRevision)
 
-    if (body.activate === true) {
-      await db.$transaction([
-        db.theme.updateMany({ where: { isActive: true, NOT: { id } }, data: { isActive: false } }),
-        db.theme.update({ where: { id }, data: { isActive: true } }),
-      ])
-      await applyThemeMenus(id)
-    }
-    const data: Record<string, string> = {}
+    const data: Record<string, unknown> = {}
     if ('name' in body) data.name = text(body.name, 'name', 120, true)
-    if ('settings' in body) data.settings = JSON.stringify(cleanSettings(body.settings, themeSchema(theme)))
-    if ('sections' in body) {
-      if (!Array.isArray(body.sections)) throw new HttpError(400, 'sections must be a list')
-      data.sections = JSON.stringify(cleanSections(body.sections))
-    }
-    if ('css' in body) data.css = text(body.css ?? '', 'css', 3_000_000)
     if ('settingsSchema' in body) data.settingsSchema = JSON.stringify(cleanSchema(body.settingsSchema))
-    const updated = await db.theme.update({ where: { id }, data, include: { _count: { select: { pages: true } } } })
+    if ('draft' in body) {
+      if (!body.draft || typeof body.draft !== 'object' || Array.isArray(body.draft)) throw new HttpError(400, 'draft must be an object')
+      data.draft = JSON.stringify(cleanDoc(body.draft as Record<string, unknown>, themeSchema(theme)))
+    }
+    if (body.discardDraft === true) data.draft = null
+    if ('draft' in data) data.revision = { increment: 1 }
+    if (Object.keys(data).length) theme = await db.theme.update({ where: { id }, data })
+
+    if (body.publish === true || body.activate === true) {
+      const doc = themeDraft(theme) ?? cleanDoc({ settings: JSON.parse(theme.settings || '{}'), sections: JSON.parse(theme.sections || '[]'), css: theme.css }, themeSchema(theme))
+      const note = body.activate === true && !theme.isActive ? 'Published as the live theme' : 'Published'
+      await publishDoc(id, doc, { note, author: user.email, activate: body.activate === true })
+    }
+    const updated = await db.theme.findUniqueOrThrow({ where: { id }, include: { _count: { select: { pages: true } } } })
     invalidateAll()
     return NextResponse.json({ ok: true, theme: adminTheme(updated) })
   } catch (error) { return failure(error) }
@@ -133,7 +153,7 @@ export async function exportTheme(request: Request) {
     }
     const files: Record<string, Uint8Array> = {
       'theme.json': strToU8(JSON.stringify(manifest, null, 2)),
-      'assets/theme.css': strToU8(theme.css),
+      'assets/theme.css': strToU8(view.css),
     }
     for (const p of theme.pages) {
       files[`pages/${p.slug}.html`] = strToU8(`<!doctype html>\n<html>\n<head>\n<title>${p.title.replace(/</g, '&lt;')}</title>\n${p.css ? `<style>\n${p.css}\n</style>\n` : ''}</head>\n<body${p.bodyClass ? ` class="${p.bodyClass.replace(/"/g, '&quot;')}"` : ''}>\n${p.content}\n</body>\n</html>\n`)
@@ -184,7 +204,8 @@ export async function duplicateTheme(request: Request) {
     }
     const relink = (value: string) => (value.startsWith('page:') && slugMap.has(value.slice(5)) ? `page:${slugMap.get(value.slice(5))}` : value)
     const relinkHtml = (html: string) => html.replace(/(\?page=)([a-z0-9-]+)/g, (m, q: string, slug: string) => (slugMap.has(slug) ? q + slugMap.get(slug) : m))
-    const sections = cleanSections(JSON.parse(source.sections || '[]')).map((s) => ({
+    const view = adminTheme(source)
+    const sections = view.sections.map((s) => ({
       ...s,
       settings: Object.fromEntries(Object.entries(s.settings).map(([k, v]) => [k,
         typeof v !== 'string' ? v : k === 'page' ? slugMap.get(v) ?? v : k === 'html' ? relinkHtml(v) : relink(v)])),
@@ -196,7 +217,8 @@ export async function duplicateTheme(request: Request) {
       const created = await tx.theme.create({
         data: {
           slug, name, version: source.version, author: source.author, description: source.description, kind: source.kind, isActive: false,
-          settingsSchema: source.settingsSchema, settings: source.settings, sections: JSON.stringify(sections), css: source.css,
+          settingsSchema: source.settingsSchema, settings: JSON.stringify(view.settings), sections: JSON.stringify(sections), css: view.css,
+          report: source.report,
         },
       })
       if (source.pages.length) {
@@ -217,5 +239,36 @@ export async function duplicateTheme(request: Request) {
     const full = await db.theme.findUniqueOrThrow({ where: { id: theme.id }, include: { _count: { select: { pages: true } } } })
     invalidateAll()
     return NextResponse.json({ ok: true, theme: adminTheme(full) })
+  } catch (error) { return failure(error) }
+}
+
+// ---------- revisions ----------
+
+/** GET ?theme= — published revisions, newest first. */
+export async function listRevisions(request: Request) {
+  try {
+    await requireAdmin(request)
+    const themeId = text(new URL(request.url).searchParams.get('theme'), 'theme', 64, true)
+    const rows = await db.themeRevision.findMany({
+      where: { themeId }, orderBy: { number: 'desc' }, take: 50,
+      select: { id: true, number: true, note: true, author: true, createdAt: true },
+    })
+    return NextResponse.json(rows, { headers: noStore })
+  } catch (error) { return failure(error) }
+}
+
+/** POST { theme, revision, baseRevision } — publish an earlier revision again. Unpublished edits are dropped. */
+export async function rollbackRevision(request: Request) {
+  try {
+    const user = await requireAdmin(request)
+    const body = await readJson(request)
+    const theme = await db.theme.findUnique({ where: { id: text(body.theme, 'theme', 64, true) } })
+    if (!theme) throw new HttpError(404, 'Theme not found')
+    checkRevision(theme, body.baseRevision)
+    const rev = await db.themeRevision.findFirst({ where: { id: text(body.revision, 'revision', 64, true), themeId: theme.id } })
+    if (!rev) throw new HttpError(404, 'Revision not found')
+    const doc = cleanDoc({ settings: JSON.parse(rev.settings), sections: JSON.parse(rev.sections), css: rev.css }, themeSchema(theme))
+    const updated = await publishDoc(theme.id, doc, { note: `Rolled back to #${rev.number}`, author: user.email })
+    return NextResponse.json({ ok: true, theme: adminTheme(updated) })
   } catch (error) { return failure(error) }
 }

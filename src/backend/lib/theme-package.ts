@@ -12,10 +12,11 @@
 import { strFromU8, unzipSync } from 'fflate'
 import { HttpError } from './auth'
 import { slugify } from './slug'
+import { buildReport, detectAdapter, DOC_DIR, type Detection, type Files, type ThemeAdapter } from './theme-adapters'
 import { cleanMenu, cleanSchema, cleanSections, cleanSettings } from './theme-store'
 import {
   MENU_HANDLES, mergeSchema,
-  type MenuHandle, type MenuItem, type ThemeSection, type ThemeSettingDef, type ThemeSettings,
+  type MenuHandle, type MenuItem, type ThemeReport, type ThemeSection, type ThemeSettingDef, type ThemeSettings,
 } from '@/shared/theme'
 
 export const MAX_ZIP_BYTES = 60 * 1024 * 1024
@@ -52,6 +53,7 @@ export interface ThemePlan {
   menus: Partial<Record<MenuHandle, MenuItem[]>>
   pages: PlannedPage[]
   warnings: string[]
+  report: ThemeReport
 }
 
 interface Options {
@@ -64,7 +66,6 @@ interface Options {
 
 // ---------- zip ----------
 
-type Files = Map<string, Uint8Array>
 
 export function unzipPackage(zip: Uint8Array): Files {
   let total = 0
@@ -73,6 +74,8 @@ export function unzipPackage(zip: Uint8Array): Files {
   try {
     entries = unzipSync(zip, {
       filter: (f) => {
+        // Entries that climb out of the package or are absolute are never valid theme files.
+        if (/(^|[\\/])\.\.([\\/]|$)/.test(f.name) || /^([\\/]|[a-zA-Z]:)/.test(f.name)) throw new HttpError(400, `Unsafe path in zip: ${f.name.slice(0, 120)}`)
         if (f.name.endsWith('/') || /(^|\/)(__MACOSX|\.git|node_modules)\//.test(f.name) || /(^|\/)\.[^/]*$/.test(f.name)) return false
         count += 1
         total += f.originalSize
@@ -93,7 +96,6 @@ export function unzipPackage(zip: Uint8Array): Files {
 const ext = (path: string) => path.split('.').pop()?.toLowerCase() ?? ''
 const dirOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '')
 const depth = (path: string) => path.split('/').length
-const DOC_DIR = /(^|\/)(documentation|docs?|help|psd|source|sources|licen[cs]e)\//i
 
 /** Resolve `ref` (as written in `from`) to a path inside the package; null for URLs/anchors. */
 export function resolveRef(from: string, ref: string, root: string): string | null {
@@ -109,32 +111,11 @@ export function resolveRef(from: string, ref: string, root: string): string | nu
   return parts.join('/')
 }
 
-export function detectPlatform(files: Files): { kind: 'native'; manifest: string } | { kind: 'html'; root: string } {
-  const paths = [...files.keys()]
-  const manifest = paths.filter((p) => p.endsWith('theme.json') && p.split('/').pop() === 'theme.json').sort((a, b) => depth(a) - depth(b))[0]
-  if (manifest) return { kind: 'native', manifest }
-  if (paths.some((p) => /(^|\/)layout\/theme\.liquid$/.test(p)) || paths.filter((p) => ext(p) === 'liquid').length > 3) {
-    throw new HttpError(422, 'This is a Shopify (Liquid) theme. It needs Shopify’s servers to run. Use the theme’s HTML version, or a native theme package (theme.json).')
-  }
-  const wpStyle = paths.find((p) => p.split('/').pop() === 'style.css' && /Theme Name\s*:/i.test(strFromU8(files.get(p)!.slice(0, 4000))))
-  if (wpStyle || paths.some((p) => p.split('/').pop() === 'functions.php')) {
-    throw new HttpError(422, 'This is a WordPress theme. It needs PHP and WordPress to run. Use the theme’s HTML version, or a native theme package (theme.json).')
-  }
-  // React/Vue/Angular/Svelte/Next projects: use the built output (dist/, build/, out/), never the sources.
-  if (paths.some((p) => p.split('/').pop() === 'package.json')) {
-    const built = paths.filter((p) => /(^|\/)(dist|build|out|www|public_html)\/(.*\/)?index\.html?$/i.test(p) && !/node_modules/.test(p)).sort((a, b) => depth(a) - depth(b))[0]
-    if (built) return { kind: 'html', root: dirOf(built) }
-    if (!paths.some((p) => /\.html?$/i.test(p) && /<body[\s\S]*<(header|nav|main|section|div class)/i.test(strFromU8(files.get(p)!.slice(0, 200_000))))) {
-      throw new HttpError(422, 'This is an app source project (package.json). Build it first (npm run build) and upload a zip that includes the build folder (dist/, build/ or out/).')
-    }
-  }
-  const html = paths.filter((p) => /^html?$/.test(ext(p)) && !DOC_DIR.test(p))
-  if (html.length) {
-    const index = html.filter((p) => /^index\.html?$/i.test(p.split('/').pop()!)).sort((a, b) => depth(a) - depth(b))[0]
-    const first = index ?? [...html].sort((a, b) => depth(a) - depth(b))[0]
-    return { kind: 'html', root: dirOf(first) }
-  }
-  const nested = paths.filter((p) => ext(p) === 'zip')
+export function detectPlatform(files: Files): { adapter: ThemeAdapter; detection: Detection; kind: 'native' | 'html' } {
+  const found = detectAdapter(files)
+  if (found?.adapter.reject) throw new HttpError(422, found.adapter.reject)
+  if (found) return { ...found, kind: found.adapter.level === 'A' ? 'native' : 'html' }
+  const nested = [...files.keys()].filter((p) => ext(p) === 'zip')
   if (nested.length) throw new HttpError(422, `This download contains another zip (${nested.slice(0, 3).map((p) => p.split('/').pop()).join(', ')}). Extract it and upload the theme zip inside.`)
   throw new HttpError(422, 'No theme found. The zip needs a theme.json manifest or .html pages.')
 }
@@ -415,7 +396,7 @@ export function pageTitles(pages: { title: string; slug: string }[]): string[] {
   return titles.map((t, i) => ((count.get(t) ?? 0) > 1 ? fromSlug(pages[i].slug) : t).slice(0, 200))
 }
 
-async function planHtml(files: Files, root: string, opts: Options): Promise<ThemePlan> {
+async function planHtml(files: Files, root: string, opts: Options): Promise<Omit<ThemePlan, 'report'>> {
   const warnings: string[] = []
   const htmlPaths = [...files.keys()]
     .filter((p) => p.startsWith(root) && /^html?$/.test(ext(p)) && !DOC_DIR.test(p.slice(root.length)))
@@ -484,7 +465,7 @@ async function planHtml(files: Files, root: string, opts: Options): Promise<Them
   }
 }
 
-async function planNative(files: Files, manifestPath: string, opts: Options): Promise<ThemePlan> {
+async function planNative(files: Files, manifestPath: string, opts: Options): Promise<Omit<ThemePlan, 'report'>> {
   const warnings: string[] = []
   const root = dirOf(manifestPath)
   let manifest: Record<string, unknown>
@@ -599,6 +580,8 @@ async function planNative(files: Files, manifestPath: string, opts: Options): Pr
 
 export async function readThemePackage(zip: Uint8Array, opts: Options): Promise<ThemePlan> {
   const files = unzipPackage(zip)
-  const platform = detectPlatform(files)
-  return platform.kind === 'native' ? planNative(files, platform.manifest, opts) : planHtml(files, platform.root, opts)
+  const { adapter, detection, kind } = detectPlatform(files)
+  const plan = kind === 'native' ? await planNative(files, detection.entry, opts) : await planHtml(files, detection.entry, opts)
+  const counts = { pages: plan.pages.length, sections: plan.sections.length, settings: plan.schema.length, menus: Object.keys(plan.menus).length }
+  return { ...plan, report: buildReport(adapter, detection, counts, plan.warnings) }
 }

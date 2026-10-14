@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, ChevronDown, Code2, Copy, Download, Eye, EyeOff, GripVertical, Loader2,
-  Monitor, MoreHorizontal, Palette, Pencil, Plus, Redo2, RotateCcw, Save, Smartphone, Trash2, Undo2, Upload,
+  FileArchive, History, Monitor, MoreHorizontal, Palette, Pencil, Plus, Redo2, RotateCcw, Save, ShieldCheck, Smartphone, Tablet, Trash2, Undo2, Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/frontend/components/ui/badge'
@@ -19,7 +19,7 @@ import { Switch } from '@/frontend/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/frontend/components/ui/tabs'
 import { Textarea } from '@/frontend/components/ui/textarea'
 import {
-  MENU_HANDLES, resolveLink, SECTION_TYPES, sectionSchema, type MenuHandle, type MenuItem, type SectionType, type ThemeSection, type ThemeSettingDef, type ThemeSettings, type ThemeValue,
+  MENU_HANDLES, resolveLink, SECTION_TYPES, sectionSchema, type MenuHandle, type MenuItem, type SectionType, type ThemeDoc, type ThemeReport, type ThemeSection, type ThemeSettingDef, type ThemeSettings, type ThemeValue,
 } from '@/shared/theme'
 import { EDITOR_PARAM, PREVIEW_PARAM, type EditorMessage } from '@/frontend/components/theme/editor-bridge'
 import { adminApi, errorMessage, useAdminList } from './admin-api'
@@ -40,9 +40,25 @@ export interface AdminTheme {
   css: string
   pageCount: number
   updatedAt: string
+  /** Bumped by every save; sent back with writes so concurrent edits are detected. */
+  revision: number
+  /** settings/sections/css below are unpublished edits; `published` is what the store shows. */
+  hasDraft: boolean
+  sourceUrl: string | null
+  report: ThemeReport
   schema: ThemeSettingDef[]
   settings: ThemeSettings
   sections: ThemeSection[]
+  published: ThemeDoc
+}
+
+interface Revision { id: string; number: number; note: string; author: string | null; createdAt: string }
+
+const LEVELS: Record<ThemeReport['level'], string> = {
+  A: 'Fully editable (theme manifest)',
+  B: 'Editable through a framework adapter',
+  C: 'Visual page editing (rendered HTML)',
+  D: 'Preview only',
 }
 
 // ---------- library ----------
@@ -114,7 +130,7 @@ function MenuAction({ icon: Icon, label, onClick, href, danger }: { icon: React.
 
 type Opener = (id: string, tab?: string) => void
 
-function ThemeRow({ theme, current, onOpen, onChanged }: { theme: AdminTheme; current?: boolean; onOpen: Opener; onChanged: (focus?: AdminTheme) => void }) {
+function ThemeRow({ theme, current, onOpen, onChanged, onReport }: { theme: AdminTheme; current?: boolean; onOpen: Opener; onChanged: (focus?: AdminTheme) => void; onReport: (t: AdminTheme) => void }) {
   const [busy, setBusy] = useState(false)
   const swatches = ['color_primary', 'color_accent', 'color_highlight', 'color_text', 'color_surface'].map((k) => String(theme.settings[k] ?? ''))
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn() } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) } }
@@ -145,13 +161,15 @@ function ThemeRow({ theme, current, onOpen, onChanged }: { theme: AdminTheme; cu
     onChanged()
   })
 
-  const meta = `v${theme.version}${theme.author ? ` · ${theme.author}` : ''}${theme.pageCount ? ` · ${theme.pageCount} page${theme.pageCount === 1 ? '' : 's'}` : ''} · ${theme.kind === 'html' ? 'HTML template' : 'Native'}`
+  const meta = `v${theme.version}${theme.author ? ` · ${theme.author}` : ''}${theme.pageCount ? ` · ${theme.pageCount} page${theme.pageCount === 1 ? '' : 's'}` : ''} · Level ${theme.report.level}: ${theme.kind === 'html' ? 'HTML template' : 'Native'}${theme.hasDraft ? ' · unpublished changes' : ''}`
   const actions = (
     <ActionsMenu>
       <MenuAction icon={Eye} label="Preview" href={theme.isActive ? '/' : `/?${PREVIEW_PARAM}=${theme.id}`} />
       <MenuAction icon={Pencil} label="Rename" onClick={rename} />
       <MenuAction icon={Copy} label="Duplicate" onClick={duplicate} />
+      <MenuAction icon={ShieldCheck} label="Compatibility report" onClick={() => onReport(theme)} />
       <MenuAction icon={Download} label="Download theme file" href={`/api/admin/themes/export?id=${theme.id}`} />
+      {theme.sourceUrl && <MenuAction icon={FileArchive} label="Download original upload" href={theme.sourceUrl} />}
       <MenuAction icon={Code2} label="Edit code" onClick={() => onOpen(theme.id, 'css')} />
       {!theme.isActive && <MenuAction icon={Trash2} label="Delete" danger onClick={remove} />}
     </ActionsMenu>
@@ -356,7 +374,10 @@ function ThemeMenus({ theme, targets }: { theme: AdminTheme; targets: LinkTarget
   )
 }
 
-type Doc = { settings: ThemeSettings; sections: ThemeSection[]; css: string }
+type Doc = ThemeDoc
+type SaveState = 'saved' | 'pending' | 'saving' | 'error'
+const AUTOSAVE_MS = 1200
+const DEVICES = { desktop: { width: 'w-full', icon: Monitor }, tablet: { width: 'w-[820px] max-w-full', icon: Tablet }, mobile: { width: 'w-[390px]', icon: Smartphone } } as const
 
 /** Pages of the store to open in the preview (like Shopify's template picker). */
 function previewOptions(targets: LinkTargets) {
@@ -378,9 +399,12 @@ function Customizer({ theme, initialTab, onBack, onSaved }: { theme: AdminTheme;
   const [css, setCss] = useState(theme.css)
   const [selected, setSelected] = useState<string | null>(null)
   const [tab, setTab] = useState(initialTab ?? 'sections')
-  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
+  const [device, setDevice] = useState<keyof typeof DEVICES>('desktop')
   const [adding, setAdding] = useState<SectionType | ''>('')
   const [saving, setSaving] = useState(false)
+  const [saveState, setSaveState] = useState<SaveState>('saved')
+  const [saveError, setSaveError] = useState('')
+  const [showRevisions, setShowRevisions] = useState(false)
   const [viewing, setViewing] = useState('view:home')
   const [dragging, setDragging] = useState<number | null>(null)
   const frame = useRef<HTMLIFrameElement>(null)
@@ -498,17 +522,73 @@ function Customizer({ theme, initialTab, onBack, onSaved }: { theme: AdminTheme;
     setTimeout(() => select(section.id), 150)
   }
 
-  const save = async (activate = false) => {
+  // ----- autosave (draft), publish, discard -----
+  // Edits are saved as the theme's draft; the store keeps showing the published version until Publish.
+  const server = useRef(theme)
+  server.current = theme
+  const inFlight = useRef<Promise<boolean> | null>(null)
+  const saveDraft = async (): Promise<boolean> => {
+    if (inFlight.current) await inFlight.current
+    const doc = { settings: latest.current.draft.settings, sections: latest.current.draft.sections, css: latest.current.draft.css }
+    const base = server.current
+    if (JSON.stringify(doc) === JSON.stringify({ settings: base.settings, sections: base.sections, css: base.css })) { setSaveState('saved'); return true }
+    setSaveState('saving')
+    const run = adminApi.put<{ theme: AdminTheme }>('/api/admin/themes', { id: theme.id, draft: doc, baseRevision: base.revision })
+      .then(({ theme: updated }) => {
+        server.current = updated
+        onSaved(updated)
+        setSaveState('saved'); setSaveError('')
+        return true
+      })
+      .catch((e) => { setSaveState('error'); setSaveError(errorMessage(e)); return false })
+      .finally(() => { inFlight.current = null })
+    inFlight.current = run
+    return run
+  }
+  useEffect(() => {
+    if (!dirty || saveState === 'error') return
+    setSaveState('pending')
+    const t = setTimeout(() => { void saveDraft() }, AUTOSAVE_MS)
+    return () => clearTimeout(t)
+  }, [settings, sections, css])
+
+  const publish = async () => {
+    const makeLive = !theme.isActive
+    if (makeLive && !confirm(`Publish "${theme.name}"? It replaces the live theme and its menus become the store menus.`)) return
     setSaving(true)
     try {
-      const { theme: updated } = await adminApi.put<{ theme: AdminTheme }>('/api/admin/themes', { id: theme.id, settings, sections, css, ...(activate ? { activate: true } : {}) })
+      if (!(await saveDraft())) return
+      const { theme: updated } = await adminApi.put<{ theme: AdminTheme }>('/api/admin/themes', { id: theme.id, baseRevision: server.current.revision, ...(makeLive ? { activate: true } : { publish: true }) })
+      server.current = updated
       onSaved(updated)
       refreshStorefrontTheme()
-      toast.success(activate ? `${theme.name} saved and published` : 'Theme saved')
+      toast.success(makeLive ? `${theme.name} is now live` : 'Changes published')
     } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
   }
-  const discard = () => { if (confirm('Discard all unsaved changes?')) { setSettings(theme.settings); setSections(theme.sections); setCss(theme.css) } }
-  const leave = () => { if (!dirty || confirm('Leave without saving your changes?')) onBack() }
+  const discard = async () => {
+    if (!confirm('Discard all unpublished changes? The theme goes back to its published version.')) return
+    setSaving(true)
+    try {
+      if (inFlight.current) await inFlight.current
+      const { theme: updated } = await adminApi.put<{ theme: AdminTheme }>('/api/admin/themes', { id: theme.id, discardDraft: true, baseRevision: server.current.revision })
+      server.current = updated
+      onSaved(updated)
+      restore(updated.published)
+      setSaveState('saved'); setSaveError('')
+    } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
+  }
+  const leave = async () => {
+    if (dirty && !(await saveDraft()) && !confirm('Your latest changes could not be saved. Leave anyway?')) return
+    onBack()
+  }
+  // Closing the tab with an unsaved change: let the browser warn.
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+  const unpublished = theme.hasDraft || dirty
 
   // ----- sidebar -----
   const current = sections.find((s) => s.id === selected)
@@ -622,9 +702,11 @@ function Customizer({ theme, initialTab, onBack, onSaved }: { theme: AdminTheme;
             ) : null)}
           </SelectContent>
         </Select>
-        <div className="flex rounded-md border border-border p-0.5">
-          <Button variant={device === 'desktop' ? 'secondary' : 'ghost'} size="icon" className="size-8" onClick={() => setDevice('desktop')} aria-label="Desktop preview"><Monitor className="size-4" /></Button>
-          <Button variant={device === 'mobile' ? 'secondary' : 'ghost'} size="icon" className="size-8" onClick={() => setDevice('mobile')} aria-label="Mobile preview"><Smartphone className="size-4" /></Button>
+        <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Preview size">
+          {(Object.keys(DEVICES) as (keyof typeof DEVICES)[]).map((d) => {
+            const Icon = DEVICES[d].icon
+            return <Button key={d} variant={device === d ? 'secondary' : 'ghost'} size="icon" className="size-8" onClick={() => setDevice(d)} aria-pressed={device === d} aria-label={`${d} preview`} title={`${d[0].toUpperCase()}${d.slice(1)} preview`}><Icon className="size-4" /></Button>
+          })}
         </div>
         <div className="flex">
           <Button variant="ghost" size="icon" className="size-8" disabled={!canUndo} onClick={undo} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 className="size-4" /></Button>
@@ -632,10 +714,21 @@ function Customizer({ theme, initialTab, onBack, onSaved }: { theme: AdminTheme;
         </div>
         </div>
         <div className="flex items-center gap-2">
-          {dirty && <span className="hidden text-xs text-amber-700 sm:inline">Unsaved changes</span>}
-          <Button variant="ghost" size="sm" disabled={!dirty || saving} onClick={discard}>Discard</Button>
-          <Button size="sm" className="bg-brand-teal hover:bg-brand-teal-dark" disabled={!dirty || saving} onClick={() => save()}><Save className="size-4" /> {saving ? 'Saving…' : 'Save'}</Button>
-          {!theme.isActive && <Button size="sm" variant="outline" disabled={saving} onClick={() => save(true)}><CheckCircle2 className="size-4" /> Save & publish</Button>}
+          <span className="hidden items-center gap-1 text-xs sm:flex" role="status" aria-live="polite">
+            {saveState === 'saving' || saveState === 'pending'
+              ? <><Loader2 className="size-3.5 animate-spin text-muted-foreground" /> Saving draft…</>
+              : saveState === 'error'
+                ? <><span className="max-w-56 truncate text-red-600" title={saveError}>Not saved: {saveError}</span><Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => void saveDraft()}>Retry</Button></>
+                : unpublished
+                  ? <span className="text-amber-700">Draft saved · not published</span>
+                  : <span className="text-muted-foreground">{theme.isActive ? 'Published' : 'Saved'}</span>}
+          </span>
+          <Button variant="ghost" size="icon" className="size-8" onClick={() => setShowRevisions(true)} aria-label="Version history" title="Version history"><History className="size-4" /></Button>
+          <Button variant="ghost" size="sm" disabled={!unpublished || saving} onClick={discard}>Discard</Button>
+          <Button size="sm" variant="outline" disabled={saving || saveState === 'saving'} onClick={() => void saveDraft()} title="Drafts save automatically"><Save className="size-4" /> Save</Button>
+          <Button size="sm" className="bg-brand-teal hover:bg-brand-teal-dark" disabled={saving || (theme.isActive && !unpublished)} onClick={publish}>
+            <CheckCircle2 className="size-4" /> {saving ? 'Publishing…' : 'Publish'}
+          </Button>
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
@@ -645,10 +738,111 @@ function Customizer({ theme, initialTab, onBack, onSaved }: { theme: AdminTheme;
             ref={frame}
             src={`/?${EDITOR_PARAM}=1`}
             title="Storefront preview"
-            className={`h-full rounded-md border border-border bg-white shadow-sm transition-[width] duration-300 ${device === 'mobile' ? 'w-[390px]' : 'w-full'}`}
+            className={`h-full rounded-md border border-border bg-white shadow-sm transition-[width] duration-300 ${DEVICES[device].width}`}
           />
         </div>
       </div>
+      <RevisionsDialog open={showRevisions} onOpenChange={setShowRevisions} theme={theme} onRestored={(updated) => {
+        server.current = updated
+        onSaved(updated)
+        restore(updated.published)
+        setSaveState('saved'); setSaveError('')
+        refreshStorefrontTheme()
+      }} />
+    </div>
+  )
+}
+
+/** Published versions of a theme; any of them can be published again. */
+function RevisionsDialog({ open, onOpenChange, theme, onRestored }: { open: boolean; onOpenChange: (o: boolean) => void; theme: AdminTheme; onRestored: (t: AdminTheme) => void }) {
+  const [rows, setRows] = useState<Revision[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    adminApi.get<Revision[]>(`/api/admin/themes/revisions?theme=${theme.id}`)
+      .then((r) => { if (live) setRows(r) })
+      .catch((e) => { if (live) { setRows([]); toast.error(errorMessage(e)) } })
+    return () => { live = false }
+  }, [open, theme.id, theme.revision])
+  const rollback = async (rev: Revision) => {
+    if (!confirm(`Publish version #${rev.number} again?${theme.hasDraft ? ' Unpublished changes are discarded.' : ''}`)) return
+    setBusy(rev.id)
+    try {
+      const { theme: updated } = await adminApi.post<{ theme: AdminTheme }>('/api/admin/themes/revisions', { theme: theme.id, revision: rev.id, baseRevision: theme.revision })
+      onRestored(updated)
+      toast.success(`Version #${rev.number} published`)
+      onOpenChange(false)
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(null) }
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Version history</DialogTitle>
+          <DialogDescription>Every publish is kept. Roll back to republish an earlier version{theme.isActive ? ' on the live store' : ''}.</DialogDescription>
+        </DialogHeader>
+        {!rows ? <Skeleton className="h-24" /> : !rows.length ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No published versions yet. Publish to create the first one.</p>
+        ) : (
+          <ul className="max-h-80 divide-y divide-border overflow-y-auto rounded-md border border-border">
+            {rows.map((r, i) => (
+              <li key={r.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">#{r.number} · {r.note || 'Published'} {i === 0 && <Badge variant="outline" className="ml-1">Current</Badge>}</div>
+                  <div className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString()}{r.author ? ` · ${r.author}` : ''}</div>
+                </div>
+                {i > 0 && <Button size="sm" variant="outline" disabled={!!busy} onClick={() => rollback(r)}><RotateCcw className="size-3.5" /> {busy === r.id ? 'Restoring…' : 'Roll back'}</Button>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** What the theme's adapter supports, detected at install. */
+function ReportDialog({ theme, onClose }: { theme: AdminTheme | null; onClose: () => void }) {
+  const r = theme?.report
+  return (
+    <Dialog open={!!theme} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Compatibility report</DialogTitle>
+          <DialogDescription>{theme?.name}</DialogDescription>
+        </DialogHeader>
+        {r && (
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className={r.level === 'A' ? 'bg-emerald-600' : r.level === 'D' ? 'bg-red-600' : 'bg-amber-600'}>Level {r.level}</Badge>
+              <span className="font-medium">{LEVELS[r.level]}</span>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">Detected</dt><dd>{r.detected} ({Math.round(r.confidence * 100)}%)</dd>
+              <dt className="text-muted-foreground">Adapter</dt><dd>{r.label} · {r.adapter}@{r.adapterVersion}</dd>
+              <dt className="text-muted-foreground">Pages</dt><dd>{r.counts.pages}</dd>
+              <dt className="text-muted-foreground">Home sections</dt><dd>{r.counts.sections}</dd>
+              <dt className="text-muted-foreground">Settings</dt><dd>{r.counts.settings}</dd>
+            </dl>
+            <ReportList title="Editable" items={r.capabilities} />
+            <ReportList title="Not supported" items={r.unsupported} />
+            <ReportList title="Install notes" items={r.warnings} />
+            <ReportList title="To improve compatibility" items={r.recommendations} />
+            <a className="text-xs text-brand-teal underline" href="/docs/theme-format.md" target="_blank" rel="noreferrer">Theme format and adapters guide</a>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ReportList({ title, items }: { title: string; items: string[] }) {
+  if (!items.length) return null
+  return (
+    <div>
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</div>
+      <ul className="list-disc space-y-0.5 pl-5 text-xs">{items.map((x, i) => <li key={i}>{x}</li>)}</ul>
     </div>
   )
 }
@@ -659,6 +853,7 @@ export function ThemesSection() {
   const { items, setItems, loading, error, reload } = useAdminList<AdminTheme>('/api/admin/themes')
   const [editing, setEditing] = useState<{ id: string; tab?: string } | null>(null)
   const [warnings, setWarnings] = useState<{ name: string; list: string[] } | null>(null)
+  const [report, setReport] = useState<AdminTheme | null>(null)
   const current = items.find((t) => t.id === editing?.id)
   const live = items.find((t) => t.isActive)
   const library = items.filter((t) => !t.isActive)
@@ -668,7 +863,11 @@ export function ThemesSection() {
 
   if (error) return <LoadError message={error} onRetry={reload} />
   if (current) {
-    return <Customizer key={current.id} theme={current} initialTab={editing?.tab} onBack={() => setEditing(null)} onSaved={(t) => { setItems(items.map((x) => (x.id === t.id ? t : x))); if (t.isActive) reload() }} />
+    return <Customizer key={current.id} theme={current} initialTab={editing?.tab} onBack={() => setEditing(null)} onSaved={(t) => {
+      // Becoming the live theme deactivates another one: refetch the list then.
+      if (t.isActive !== current.isActive) reload()
+      else setItems((list) => list.map((x) => (x.id === t.id ? t : x)))
+    }} />
   }
 
   return (
@@ -688,18 +887,19 @@ export function ThemesSection() {
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
       ) : (
         <>
-          {live && <ThemeRow theme={live} current onOpen={(id, tab) => setEditing({ id, tab })} onChanged={reload} />}
+          {live && <ThemeRow theme={live} current onOpen={(id, tab) => setEditing({ id, tab })} onChanged={reload} onReport={setReport} />}
           <div>
             <h3 className="mb-1.5 mt-4 text-sm font-semibold text-brand-ink">Theme library</h3>
             <p className="mb-2 text-xs text-muted-foreground">Edit and preview themes without changing the live store. Publish one when it’s ready.</p>
             <Card className="py-0"><CardContent className="divide-y divide-border p-0">
-              {library.map((t) => <ThemeRow key={t.id} theme={t} onOpen={(id, tab) => setEditing({ id, tab })} onChanged={reload} />)}
+              {library.map((t) => <ThemeRow key={t.id} theme={t} onOpen={(id, tab) => setEditing({ id, tab })} onChanged={reload} onReport={setReport} />)}
               {!library.length && <p className="px-3 py-6 text-center text-sm text-muted-foreground">No other themes. Upload one or duplicate the current theme.</p>}
             </CardContent></Card>
           </div>
         </>
       )}
 
+      <ReportDialog theme={report} onClose={() => setReport(null)} />
       <Dialog open={!!warnings} onOpenChange={(o) => !o && setWarnings(null)}>
         <DialogContent>
           <DialogHeader>

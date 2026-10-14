@@ -244,3 +244,25 @@ export async function sendEnquiryResponse(reply: { to: string; customerName: str
     return false
   }
 }
+
+// ─── Figma connection needs re-authorization (to store owners) ────────────────
+export async function sendFigmaReauthNotice(to: string[]) {
+  if (!process.env.RESEND_API_KEY || !to.length) return
+  const adminUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/admin?section=figma`
+  try {
+    const { error } = await resend.emails.send({
+      from: `NexEcoms <${FROM}>`,
+      to,
+      subject: 'Reconnect your Figma account | NexEcoms',
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#222">
+          <p>NexEcoms could not refresh access to your store's Figma account, so design imports and updates are paused.</p>
+          <p><a href="${escapeHtml(adminUrl)}">Open the admin panel</a> and choose <strong>Reconnect Figma</strong>. Your installed pages are not affected.</p>
+        </div>
+      `,
+    })
+    if (error) console.error('[Resend] sendFigmaReauthNotice failed:', error.message)
+  } catch (err) {
+    console.error('[Resend] sendFigmaReauthNotice failed:', err)
+  }
+}

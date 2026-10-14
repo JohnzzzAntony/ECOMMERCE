@@ -24,6 +24,7 @@ import { SafeHtml } from '@/frontend/components/theme/html-content'
 import { PageBody, usePage } from '@/frontend/views/page-view'
 import { LINK_GRID_TILES, resolveSettings, sectionSchema, type SectionType, type ThemeSection, type ThemeSettings } from '@/shared/theme'
 import { SectionFrame } from '@/frontend/components/theme/section-frame'
+import { ScrollStroke } from '@/frontend/components/theme/scroll-stroke'
 import type {
   Product, Category, Collection, BlogPost, Testimonial,
   ClientLogo, HeroSlide, GalleryItem,
@@ -1300,6 +1301,7 @@ function sectionContent(type: SectionType, settings: ThemeSettings, data: HomeDa
     // Product rows with nothing to show are hidden instead of showing placeholders.
     case 'featured': return data.featured.length ? <FeaturedProducts products={data.featured} s={s} /> : null
     case 'banner': return <BannerAd s={s} />
+    case 'scroll_stroke': return <ScrollStroke s={s} />
     case 'collections': return <CollectionsSection collections={data.collections} s={s} />
     case 'new_arrivals': return data.newArrivals.length ? <NewArrivalsSection products={data.newArrivals} s={s} /> : null
     case 'best_sellers': return data.bestSellers.length ? <BestSellersSection products={data.bestSellers} s={s} /> : null

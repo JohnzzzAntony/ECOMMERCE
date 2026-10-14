@@ -12,7 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/frontend/compone
 import { api } from '@/frontend/lib/api'
 import { useStore } from '@/frontend/store/use-store'
 import type { User } from '@/shared/types'
-import { errorMessage } from './admin-api'
+import { adminApi, errorMessage } from './admin-api'
 import { BlogSection } from './blog'
 import { ClientsSection, MediaSection, TestimonialsSection } from './content'
 import { DashboardSection } from './dashboard'
@@ -24,6 +24,10 @@ import { ProductsSection } from './products'
 import { SECTIONS, type SectionKey } from './sections'
 import { SettingsSection } from './settings'
 import { ThemesSection } from './themes'
+import { FigmaSection } from './figma'
+import { DesignImportSection } from './design-import'
+import { StorePagesSection } from './design/store-pages'
+import { DesignSystemSection, MediaLibrarySection } from './design/design-system'
 import { initials } from './shared'
 import { UsersSection } from './users'
 
@@ -120,7 +124,7 @@ function LoginGate() {
   )
 }
 
-function Sidebar({ section, onSelect }: { section: SectionKey; onSelect: (s: SectionKey) => void }) {
+function Sidebar({ sections, section, onSelect }: { sections: typeof SECTIONS; section: SectionKey; onSelect: (s: SectionKey) => void }) {
   return (
     <div className="flex h-full flex-col bg-brand-ink text-white">
       <div className="flex items-center gap-3 border-b border-white/10 px-5 py-5">
@@ -132,9 +136,9 @@ function Sidebar({ section, onSelect }: { section: SectionKey; onSelect: (s: Sec
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
-          {SECTIONS.map(({ key, label, icon: Icon, group }, i) => {
+          {sections.map(({ key, label, icon: Icon, group }, i) => {
             const active = section === key
-            const heading = i === 0 ? 'Management' : group !== SECTIONS[i - 1].group ? group ?? 'Configuration' : null
+            const heading = i === 0 ? 'Management' : group !== sections[i - 1].group ? group ?? 'Configuration' : null
             return (
               <li key={key}>
                 {heading && <div className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-white/40 ${i ? 'mt-4' : ''}`}>{heading}</div>}
@@ -165,8 +169,18 @@ function Sidebar({ section, onSelect }: { section: SectionKey; onSelect: (s: Sec
 }
 
 function AdminLayout({ user }: { user: User }) {
-  const [section, setSection] = useState<SectionKey>('dashboard')
+  // ?section=<key> opens a section directly (used by the Figma OAuth callback and notification emails).
+  const [section, setSection] = useState<SectionKey>(() => {
+    const key = typeof window === 'undefined' ? null : new URL(window.location.href).searchParams.get('section')
+    return SECTIONS.some((s) => s.key === key) ? key as SectionKey : 'dashboard'
+  })
   const [mobileOpen, setMobileOpen] = useState(false)
+  // The theme system is hidden unless the store enables it (FEATURE_THEMES / per-store override).
+  const [themesOn, setThemesOn] = useState(false)
+  useEffect(() => {
+    adminApi.get<{ themesEnabled: boolean }>('/api/admin/store').then((s) => setThemesOn(s.themesEnabled)).catch(() => setThemesOn(false))
+  }, [])
+  const sections = themesOn ? SECTIONS : SECTIONS.filter((s) => s.key !== 'themes')
   const meta = SECTIONS.find((s) => s.key === section)!
   const adminName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
 
@@ -187,20 +201,25 @@ function AdminLayout({ user }: { user: User }) {
       case 'testimonials': return <TestimonialsSection />
       case 'clients': return <ClientsSection />
       case 'newsletter': return <NewsletterSection />
-      case 'themes': return <ThemesSection />
+      case 'themes': return themesOn ? <ThemesSection /> : <SectionNotFound />
       case 'pages': return <PagesSection />
       case 'navigation': return <NavigationSection />
+      case 'figma': return <FigmaSection />
+      case 'designs': return <DesignImportSection />
+      case 'store-pages': return <StorePagesSection />
+      case 'design-system': return <DesignSystemSection />
+      case 'media-library': return <MediaLibrarySection />
       case 'settings': return <SettingsSection />
     }
   }
 
   return (
     <div className="flex min-h-screen bg-brand-bg">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 lg:block"><Sidebar section={section} onSelect={select} /></aside>
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 lg:block"><Sidebar sections={sections} section={section} onSelect={select} /></aside>
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-72 p-0">
           <SheetHeader className="sr-only"><SheetTitle>Navigation</SheetTitle></SheetHeader>
-          <Sidebar section={section} onSelect={select} />
+          <Sidebar sections={sections} section={section} onSelect={select} />
         </SheetContent>
       </Sheet>
 
@@ -225,5 +244,13 @@ function AdminLayout({ user }: { user: User }) {
         </main>
       </div>
     </div>
+  )
+}
+
+function SectionNotFound() {
+  return (
+    <Card>
+      <CardHeader><CardTitle>404 — Not found</CardTitle><CardDescription>This section is not available for your store.</CardDescription></CardHeader>
+    </Card>
   )
 }

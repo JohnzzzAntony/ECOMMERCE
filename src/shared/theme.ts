@@ -66,6 +66,19 @@ export const SECTION_TYPES = {
   categories: { label: 'Categories', schema: HEADINGS },
   featured: { label: 'Featured products', schema: HEADINGS },
   banner: { label: 'Promo banner', schema: [...HEADINGS, t('text', 'Text', { type: 'textarea' }), t('button_label', 'Button label'), t('link', 'Button link', { type: 'link' })] },
+  scroll_stroke: {
+    label: 'Scroll stroke',
+    note: 'Tall section: a line draws itself behind the heading as visitors scroll, then a closing card slides in.',
+    schema: [
+      t('title', 'Heading', { type: 'textarea', default: 'The Stroke\nThat follows the\nScroll Progress' }),
+      t('text', 'Text', { default: 'Scroll down to see the effect' }),
+      t('card_title', 'Closing card heading', { default: 'jkr international' }),
+      ...[1, 2, 3, 4].map((n) => t(`detail_${n}`, `Card detail ${n}`, { type: 'textarea', group: 'Closing card' })),
+      { id: 'stroke_color', type: 'color', group: 'Style', label: 'Stroke color', default: '#C2F84F' },
+      { id: 'card_color', type: 'color', group: 'Style', label: 'Card color', default: '#1F3A4B' },
+      { id: 'card_text_color', type: 'color', group: 'Style', label: 'Card text color', default: '#FAFDEE' },
+    ],
+  },
   collections: { label: 'Collections', schema: HEADINGS },
   new_arrivals: { label: 'New arrivals', schema: HEADINGS },
   best_sellers: { label: 'Best sellers', schema: HEADINGS },
@@ -192,6 +205,30 @@ export interface StorefrontTheme {
   sections: ThemeSection[]
   css: string
   menus: Record<MenuHandle, MenuItem[]>
+}
+
+/** The editable part of a theme: saved as a draft, copied to the live columns on publish. */
+export interface ThemeDoc {
+  settings: ThemeSettings
+  sections: ThemeSection[]
+  css: string
+}
+
+/** A = native manifest, B = framework source adapter, C = rendered DOM, D = unsupported/preview only. */
+export type CompatLevel = 'A' | 'B' | 'C' | 'D'
+
+export interface ThemeReport {
+  adapter: string
+  adapterVersion: string
+  label: string
+  level: CompatLevel
+  detected: string
+  confidence: number
+  counts: { pages: number; sections: number; settings: number; menus: number }
+  capabilities: string[]
+  unsupported: string[]
+  warnings: string[]
+  recommendations: string[]
 }
 
 // ---------- default theme ----------

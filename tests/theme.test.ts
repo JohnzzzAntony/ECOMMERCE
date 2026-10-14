@@ -2,7 +2,7 @@
 import { expect, test } from 'bun:test'
 import { strToU8, zipSync } from 'fflate'
 import { extractMenus, extractOptions, pageTitles, readThemePackage } from '../src/backend/lib/theme-package'
-import { cleanMenu, cleanSections, cleanSettings } from '../src/backend/lib/theme-store'
+import { checkRevision, cleanDoc, cleanMenu, cleanSections, cleanSettings } from '../src/backend/lib/theme-store'
 import { CORE_SETTINGS, mergeSchema, resolveLink, sectionSchema, themeVariablesCss } from '../src/shared/theme'
 
 const zip = (files: Record<string, string>) => zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])))
@@ -187,4 +187,46 @@ test('App source projects use their build output, or ask for a build', async () 
   const built = await readThemePackage(zip({ 'app/package.json': '{}', 'app/index.html': '<div id="root"></div>', 'app/dist/index.html': '<html><body><div id="root">x</div></body></html>' }), opts)
   expect(built.pages.map((p) => p.slug)).toEqual(['home'])
   await expect(readThemePackage(zip({ 'app/package.json': '{}', 'app/index.html': '<body><div id="root"></div></body>', 'app/src/App.jsx': 'x' }), opts)).rejects.toThrow('npm run build')
+})
+
+// ---------- adapters, compatibility report, draft/publish validation ----------
+
+test('compatibility report: native manifest is level A, HTML template level C', async () => {
+  const { upload } = fakeUpload()
+  const native = await readThemePackage(zip({ 'theme.json': JSON.stringify({ name: 'N', sections: [{ type: 'hero' }] }) }), { upload, slugTaken: async () => false })
+  expect(native.report.level).toBe('A')
+  expect(native.report.adapter).toBe('native-manifest')
+  expect(native.report.counts.sections).toBe(1)
+  const html = await readThemePackage(zip({ 'index.html': '<html><body><h1>Hi</h1></body></html>' }), { upload, slugTaken: async () => false })
+  expect(html.report.level).toBe('C')
+  expect(html.report.unsupported.length).toBeGreaterThan(0)
+  expect(html.report.counts.pages).toBe(1)
+})
+
+test('built app output installs as HTML; unbuilt sources and Liquid/PHP themes are rejected with a reason', async () => {
+  const { upload } = fakeUpload()
+  const opts = { upload, slugTaken: async () => false }
+  const built = await readThemePackage(zip({ 'app/package.json': '{"dependencies":{"react":"19"}}', 'app/dist/index.html': '<html><body><main>x</main></body></html>' }), opts)
+  expect(built.report.detected).toBe('React build output')
+  await expect(readThemePackage(zip({ 'package.json': '{"dependencies":{"vue":"3"}}', 'src/App.vue': '<template/>' }), opts)).rejects.toThrow(/Build it first/)
+  await expect(readThemePackage(zip({ 'layout/theme.liquid': '{{ content_for_layout }}' }), opts)).rejects.toThrow(/Shopify/)
+  await expect(readThemePackage(zip({ 'style.css': '/* Theme Name: X */', 'index.php': '<?php' }), opts)).rejects.toThrow(/WordPress/)
+})
+
+test('zip entries that escape the package are rejected', async () => {
+  const { upload } = fakeUpload()
+  for (const bad of ['../evil.html', 'a/../../evil.html', '/etc/x.html', 'C:/x.html']) {
+    await expect(readThemePackage(zip({ [bad]: '<html></html>', 'index.html': '<html></html>' }), { upload, slugTaken: async () => false })).rejects.toThrow(/Unsafe path/)
+  }
+})
+
+test('draft documents are validated like any edit; stale revisions are refused', () => {
+  const schema = mergeSchema([])
+  const doc = cleanDoc({ settings: { color_primary: 'javascript:alert(1)', nope: 1 }, sections: [{ type: 'hero' }, { type: 'bogus' }], css: 'a{}' }, schema)
+  expect(doc.settings).toEqual({})
+  expect(doc.sections.map((s) => s.type)).toEqual(['hero'])
+  expect(doc.css).toBe('a{}')
+  expect(() => cleanDoc({ sections: 'x' }, schema)).toThrow(/sections/)
+  expect(() => checkRevision({ revision: 3 }, 2)).toThrow(/another window/)
+  expect(() => checkRevision({ revision: 3 }, 3)).not.toThrow()
 })

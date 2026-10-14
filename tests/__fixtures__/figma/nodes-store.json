@@ -1,0 +1,156 @@
+{
+  "name": "Medi Store Redesign",
+  "lastModified": "2026-10-10T09:30:00Z",
+  "nodes": {
+    "10:1": {
+      "styles": {
+        "S:brand": { "name": "Brand/Primary", "styleType": "FILL" },
+        "S:h1": { "name": "Heading/H1", "styleType": "TEXT" }
+      },
+      "components": { "C:btn-primary": { "name": "Type=Primary", "componentSetId": "CS:btn" } },
+      "componentSets": { "CS:btn": { "name": "Button" } },
+      "document": {
+        "id": "10:1", "name": "Home / Desktop", "type": "FRAME", "layoutMode": "VERTICAL", "itemSpacing": 0,
+        "absoluteBoundingBox": { "x": 0, "y": 0, "width": 1440, "height": 3000 },
+        "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1, "a": 1 } }],
+        "children": [
+          {
+            "id": "11:1", "name": "Promo", "type": "FRAME", "layoutMode": "HORIZONTAL", "primaryAxisAlignItems": "CENTER", "counterAxisAlignItems": "CENTER",
+            "paddingTop": 8, "paddingBottom": 8, "layoutSizingHorizontal": "FILL",
+            "absoluteBoundingBox": { "x": 0, "y": 0, "width": 1440, "height": 40 },
+            "fills": [{ "type": "SOLID", "color": { "r": 0.051, "g": 0.42, "b": 0.549, "a": 1 } }], "styles": { "fill": "S:brand" },
+            "children": [
+              { "id": "11:2", "name": "Promo text", "type": "TEXT", "characters": "Free delivery over 500 AED",
+                "absoluteBoundingBox": { "x": 600, "y": 10, "width": 240, "height": 20 },
+                "style": { "fontFamily": "Inter", "fontWeight": 500, "fontSize": 14, "textAlignHorizontal": "CENTER", "lineHeightPx": 20, "letterSpacing": 0 },
+                "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1, "a": 1 } }] }
+            ]
+          },
+          {
+            "id": "12:1", "name": "Section/hero", "type": "FRAME", "layoutMode": "VERTICAL", "itemSpacing": 24, "counterAxisAlignItems": "CENTER",
+            "paddingTop": 120, "paddingBottom": 120, "paddingLeft": 80, "paddingRight": 80,
+            "absoluteBoundingBox": { "x": 0, "y": 40, "width": 1440, "height": 640 },
+            "fills": [{ "type": "IMAGE", "imageRef": "img-hero", "scaleMode": "FILL" }],
+            "children": [
+              { "id": "12:2", "name": "{{title}}", "type": "TEXT", "characters": "Care that moves with you",
+                "absoluteBoundingBox": { "x": 300, "y": 200, "width": 840, "height": 80 },
+                "style": { "fontFamily": "Plus Jakarta Sans", "fontWeight": 700, "fontSize": 64, "textAlignHorizontal": "CENTER", "lineHeightPx": 72, "letterSpacing": -1 },
+                "styles": { "text": "S:h1" },
+                "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1, "a": 1 } }] },
+              { "id": "12:3", "name": "Subtitle", "type": "TEXT", "characters": "Hospital-grade equipment, delivered across the UAE. Read our guide.",
+                "characterStyleOverrides": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,2,2,2,2,2,2,2],
+                "styleOverrideTable": { "1": { "fontWeight": 700 }, "2": { "textDecoration": "UNDERLINE", "hyperlink": { "type": "URL", "url": "https://example.com/guide" } } },
+                "absoluteBoundingBox": { "x": 400, "y": 300, "width": 640, "height": 56 },
+                "style": { "fontFamily": "Inter", "fontWeight": 400, "fontSize": 20, "textAlignHorizontal": "CENTER", "lineHeightPx": 28, "letterSpacing": 0 },
+                "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1, "a": 1 } }] },
+              { "id": "12:4", "name": "Button", "type": "INSTANCE", "componentId": "C:btn-primary",
+                "componentProperties": { "Type": { "type": "VARIANT", "value": "Primary" } },
+                "layoutMode": "HORIZONTAL", "paddingLeft": 24, "paddingRight": 24, "paddingTop": 12, "paddingBottom": 12,
+                "absoluteBoundingBox": { "x": 640, "y": 400, "width": 160, "height": 48 },
+                "fills": [{ "type": "SOLID", "color": { "r": 0.051, "g": 0.42, "b": 0.549, "a": 1 } }], "cornerRadius": 8,
+                "interactions": [{ "trigger": { "type": "ON_CLICK" }, "actions": [{ "type": "NODE", "destinationId": "10:9", "navigation": "NAVIGATE" }] }],
+                "children": [
+                  { "id": "12:5", "name": "Label", "type": "TEXT", "characters": "Shop now",
+                    "absoluteBoundingBox": { "x": 664, "y": 412, "width": 112, "height": 24 },
+                    "style": { "fontFamily": "Inter", "fontWeight": 600, "fontSize": 16, "lineHeightPx": 24, "letterSpacing": 0 },
+                    "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1, "a": 1 } }] }
+                ] }
+            ]
+          },
+          {
+            "id": "13:1", "name": "Why choose us", "type": "FRAME", "layoutMode": "VERTICAL", "itemSpacing": 32, "paddingTop": 80, "paddingBottom": 80, "paddingLeft": 120, "paddingRight": 120,
+            "absoluteBoundingBox": { "x": 0, "y": 680, "width": 1440, "height": 520 },
+            "children": [
+              { "id": "13:2", "name": "Heading", "type": "TEXT", "characters": "Why choose us",
+                "absoluteBoundingBox": { "x": 120, "y": 760, "width": 400, "height": 48 },
+                "style": { "fontFamily": "Plus Jakarta Sans", "fontWeight": 700, "fontSize": 40, "lineHeightPx": 48, "letterSpacing": 0 },
+                "fills": [{ "type": "SOLID", "color": { "r": 0.1, "g": 0.1, "b": 0.18, "a": 1 } }] },
+              { "id": "13:3", "name": "Cards", "type": "FRAME", "layoutMode": "HORIZONTAL", "itemSpacing": 24,
+                "absoluteBoundingBox": { "x": 120, "y": 840, "width": 1200, "height": 280 },
+                "children": [
+                  { "id": "13:4", "name": "Card", "type": "FRAME", "layoutMode": "VERTICAL", "itemSpacing": 12, "absoluteBoundingBox": { "x": 120, "y": 840, "width": 384, "height": 280 },
+                    "children": [
+                      { "id": "13:5", "name": "Icon", "type": "VECTOR", "absoluteBoundingBox": { "x": 120, "y": 840, "width": 48, "height": 48 }, "fills": [{ "type": "SOLID", "color": { "r": 0, "g": 0.7, "b": 0.85, "a": 1 } }] },
+                      { "id": "13:6", "name": "Title", "type": "TEXT", "characters": "ISO certified", "absoluteBoundingBox": { "x": 120, "y": 900, "width": 300, "height": 28 }, "style": { "fontFamily": "Inter", "fontWeight": 600, "fontSize": 20 }, "fills": [{ "type": "SOLID", "color": { "r": 0.1, "g": 0.1, "b": 0.18, "a": 1 } }] },
+                      { "id": "13:7", "name": "Body", "type": "TEXT", "characters": "Every device meets international standards.", "absoluteBoundingBox": { "x": 120, "y": 940, "width": 300, "height": 48 }, "style": { "fontFamily": "Inter", "fontWeight": 400, "fontSize": 16 }, "fills": [{ "type": "SOLID", "color": { "r": 0.35, "g": 0.35, "b": 0.4, "a": 1 } }] }
+                    ] },
+                  { "id": "13:8", "name": "Card", "type": "FRAME", "layoutMode": "VERTICAL", "itemSpacing": 12, "absoluteBoundingBox": { "x": 528, "y": 840, "width": 384, "height": 280 },
+                    "children": [
+                      { "id": "13:9", "name": "Icon", "type": "VECTOR", "absoluteBoundingBox": { "x": 528, "y": 840, "width": 48, "height": 48 }, "fills": [{ "type": "SOLID", "color": { "r": 0, "g": 0.7, "b": 0.85, "a": 1 } }] },
+                      { "id": "13:10", "name": "Title", "type": "TEXT", "characters": "Same-day delivery", "absoluteBoundingBox": { "x": 528, "y": 900, "width": 300, "height": 28 }, "style": { "fontFamily": "Inter", "fontWeight": 600, "fontSize": 20 }, "fills": [{ "type": "SOLID", "color": { "r": 0.1, "g": 0.1, "b": 0.18, "a": 1 } }] },
+                      { "id": "13:11", "name": "Body", "type": "TEXT", "characters": "Order before 2pm in Dubai.", "absoluteBoundingBox": { "x": 528, "y": 940, "width": 300, "height": 48 }, "style": { "fontFamily": "Inter", "fontWeight": 400, "fontSize": 16 }, "fills": [{ "type": "SOLID", "color": { "r": 0.35, "g": 0.35, "b": 0.4, "a": 1 } }] }
+                    ] },
+                  { "id": "13:12", "name": "Card", "type": "FRAME", "layoutMode": "VERTICAL", "itemSpacing": 12, "absoluteBoundingBox": { "x": 936, "y": 840, "width": 384, "height": 280 },
+                    "children": [
+                      { "id": "13:13", "name": "Icon", "type": "VECTOR", "absoluteBoundingBox": { "x": 936, "y": 840, "width": 48, "height": 48 }, "fills": [{ "type": "SOLID", "color": { "r": 0, "g": 0.7, "b": 0.85, "a": 1 } }] },
+                      { "id": "13:14", "name": "Title", "type": "TEXT", "characters": "Expert support", "absoluteBoundingBox": { "x": 936, "y": 900, "width": 300, "height": 28 }, "style": { "fontFamily": "Inter", "fontWeight": 600, "fontSize": 20 }, "fills": [{ "type": "SOLID", "color": { "r": 0.1, "g": 0.1, "b": 0.18, "a": 1 } }] },
+                      { "id": "13:15", "name": "Body", "type": "TEXT", "characters": "Clinical specialists on call.", "absoluteBoundingBox": { "x": 936, "y": 940, "width": 300, "height": 48 }, "style": { "fontFamily": "Inter", "fontWeight": 400, "fontSize": 16 }, "fills": [{ "type": "SOLID", "color": { "r": 0.35, "g": 0.35, "b": 0.4, "a": 1 } }] }
+                    ] }
+                ] }
+            ]
+          },
+          {
+            "id": "14:1", "name": "Best sellers", "type": "FRAME", "layoutMode": "VERTICAL", "itemSpacing": 24, "paddingTop": 64, "paddingBottom": 64,
+            "absoluteBoundingBox": { "x": 0, "y": 1200, "width": 1440, "height": 520 },
+            "children": [
+              { "id": "14:2", "name": "Grid", "type": "FRAME", "layoutMode": "HORIZONTAL", "itemSpacing": 24, "absoluteBoundingBox": { "x": 120, "y": 1264, "width": 1200, "height": 400 },
+                "children": [
+                  { "id": "14:3", "name": "Product card", "type": "FRAME", "layoutMode": "VERTICAL", "absoluteBoundingBox": { "x": 120, "y": 1264, "width": 282, "height": 400 },
+                    "children": [
+                      { "id": "14:4", "name": "Photo", "type": "RECTANGLE", "absoluteBoundingBox": { "x": 120, "y": 1264, "width": 282, "height": 282 }, "fills": [{ "type": "IMAGE", "imageRef": "img-p1", "scaleMode": "FILL" }] },
+                      { "id": "14:5", "name": "Name", "type": "TEXT", "characters": "Folding wheelchair", "absoluteBoundingBox": { "x": 120, "y": 1560, "width": 282, "height": 24 }, "style": { "fontFamily": "Inter", "fontWeight": 500, "fontSize": 16 } },
+                      { "id": "14:6", "name": "Price", "type": "TEXT", "characters": "1,250.00 AED", "absoluteBoundingBox": { "x": 120, "y": 1590, "width": 282, "height": 24 }, "style": { "fontFamily": "Inter", "fontWeight": 700, "fontSize": 16 } }
+                    ] },
+                  { "id": "14:7", "name": "Product card", "type": "FRAME", "layoutMode": "VERTICAL", "absoluteBoundingBox": { "x": 426, "y": 1264, "width": 282, "height": 400 },
+                    "children": [
+                      { "id": "14:8", "name": "Photo", "type": "RECTANGLE", "absoluteBoundingBox": { "x": 426, "y": 1264, "width": 282, "height": 282 }, "fills": [{ "type": "IMAGE", "imageRef": "img-p2", "scaleMode": "FILL" }] },
+                      { "id": "14:9", "name": "Name", "type": "TEXT", "characters": "Hospital bed", "absoluteBoundingBox": { "x": 426, "y": 1560, "width": 282, "height": 24 }, "style": { "fontFamily": "Inter", "fontWeight": 500, "fontSize": 16 } },
+                      { "id": "14:10", "name": "Price", "type": "TEXT", "characters": "4,990.00 AED", "absoluteBoundingBox": { "x": 426, "y": 1590, "width": 282, "height": 24 }, "style": { "fontFamily": "Inter", "fontWeight": 700, "fontSize": 16 } }
+                    ] }
+                ] }
+            ]
+          },
+          {
+            "id": "15:1", "name": "Questions", "type": "FRAME", "layoutMode": "VERTICAL", "itemSpacing": 8, "absoluteBoundingBox": { "x": 0, "y": 1720, "width": 1440, "height": 400 },
+            "children": [
+              { "id": "15:2", "name": "Item", "type": "FRAME", "layoutMode": "VERTICAL", "absoluteBoundingBox": { "x": 120, "y": 1720, "width": 1200, "height": 96 },
+                "children": [
+                  { "id": "15:3", "name": "Q", "type": "TEXT", "characters": "Do you deliver to Abu Dhabi?", "absoluteBoundingBox": { "x": 120, "y": 1720, "width": 600, "height": 28 }, "style": { "fontFamily": "Inter", "fontWeight": 600, "fontSize": 18 } },
+                  { "id": "15:4", "name": "A", "type": "TEXT", "characters": "Yes, within 48 hours.", "absoluteBoundingBox": { "x": 120, "y": 1756, "width": 600, "height": 24 }, "style": { "fontFamily": "Inter", "fontWeight": 400, "fontSize": 16 } }
+                ] },
+              { "id": "15:5", "name": "Item", "type": "FRAME", "layoutMode": "VERTICAL", "absoluteBoundingBox": { "x": 120, "y": 1824, "width": 1200, "height": 96 },
+                "children": [
+                  { "id": "15:6", "name": "Q", "type": "TEXT", "characters": "Can I rent equipment?", "absoluteBoundingBox": { "x": 120, "y": 1824, "width": 600, "height": 28 }, "style": { "fontFamily": "Inter", "fontWeight": 600, "fontSize": 18 } },
+                  { "id": "15:7", "name": "A", "type": "TEXT", "characters": "Selected items are available to rent monthly.", "absoluteBoundingBox": { "x": 120, "y": 1860, "width": 600, "height": 24 }, "style": { "fontFamily": "Inter", "fontWeight": 400, "fontSize": 16 } }
+                ] }
+            ]
+          },
+          {
+            "id": "16:1", "name": "Collage", "type": "FRAME", "layoutMode": "NONE",
+            "absoluteBoundingBox": { "x": 0, "y": 2120, "width": 1440, "height": 500 },
+            "children": [
+              { "id": "16:2", "name": "Big text", "type": "TEXT", "characters": "Made for real homes", "absoluteBoundingBox": { "x": 100, "y": 2200, "width": 500, "height": 60 }, "style": { "fontFamily": "Acme Sans", "fontWeight": 700, "fontSize": 48 }, "fills": [{ "type": "SOLID", "color": { "r": 0.8, "g": 0.8, "b": 0.8, "a": 1 } }] },
+              { "id": "16:3", "name": "Sticker", "type": "ELLIPSE", "absoluteBoundingBox": { "x": 900, "y": 2150, "width": 200, "height": 200 }, "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 0.6, "b": 0, "a": 1 } }] }
+            ]
+          }
+        ]
+      }
+    },
+    "10:2": {
+      "styles": {}, "components": {}, "componentSets": {},
+      "document": {
+        "id": "10:2", "name": "Home / Mobile", "type": "FRAME", "layoutMode": "VERTICAL",
+        "absoluteBoundingBox": { "x": 1600, "y": 0, "width": 375, "height": 2400 },
+        "children": [
+          { "id": "21:1", "name": "Promo", "type": "FRAME", "layoutMode": "HORIZONTAL", "absoluteBoundingBox": { "x": 1600, "y": 0, "width": 375, "height": 40 },
+            "children": [{ "id": "21:2", "name": "Promo text", "type": "TEXT", "characters": "Free delivery over 500 AED", "absoluteBoundingBox": { "x": 1620, "y": 10, "width": 300, "height": 20 }, "style": { "fontFamily": "Inter", "fontWeight": 500, "fontSize": 14 } }] },
+          { "id": "22:1", "name": "Section/hero", "type": "FRAME", "layoutMode": "VERTICAL", "absoluteBoundingBox": { "x": 1600, "y": 40, "width": 375, "height": 520 },
+            "fills": [{ "type": "IMAGE", "imageRef": "img-hero", "scaleMode": "FILL" }],
+            "children": [
+              { "id": "22:2", "name": "{{title}}", "type": "TEXT", "characters": "Care that moves", "absoluteBoundingBox": { "x": 1620, "y": 200, "width": 335, "height": 80 }, "style": { "fontFamily": "Plus Jakarta Sans", "fontWeight": 700, "fontSize": 36, "textAlignHorizontal": "LEFT" } }
+            ] }
+        ]
+      }
+    }
+  }
+}

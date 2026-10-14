@@ -155,3 +155,39 @@ On install:
   preloaders and reveal-on-scroll classes are made visible by a small CSS block at the end of the theme CSS.
 
 Limits: zip ≤ 60 MB, ≤ 250 MB extracted, ≤ 80 pages, ≤ 600 referenced assets (25 MB each).
+
+## Compatibility levels and adapters
+
+Each upload is matched by an adapter (`src/backend/lib/theme-adapters.ts`). The result is saved as the theme's
+**compatibility report** (Themes → ⋯ → Compatibility report).
+
+| Level | Adapter | What you can edit |
+|---|---|---|
+| A | `native-manifest` (theme.json) | Typed settings, homepage sections (add/duplicate/hide/reorder/remove, per-section style and animation), pages, menus, CSS |
+| B | — | Framework source adapters. None ships: uploaded source code is never built or run on the store server. |
+| C | `html-dom` (static HTML, or a `dist/`/`build/`/`out/` folder of a built React/Vue/Angular/Svelte app) | Pages in the visual page editor (text, images, links, colors, size, background; duplicate/move/remove elements); `:root` CSS variables as settings |
+| D | `shopify-liquid`, `wordpress-php`, `app-source` | Rejected at upload with the reason and how to fix it (HTML version, theme.json, or build first) |
+
+**Adding a stack:** add a `ThemeAdapter` to `ADAPTERS` (id, version, level, capabilities, unsupported, recommendations,
+`detect(files)` returning `{ confidence, entry, detected }`) and, for an installable level, a planner in
+`theme-package.ts` that turns the files into a `ThemePlan` (settings, sections, pages, menus, CSS). Add a test in
+`tests/theme.test.ts`. Don't raise a theme's level unless its adapter and tests cover what the level promises.
+
+## Drafts, publishing and rollback
+
+- Edits in the customizer autosave as the theme's **draft** (status in the top bar; Retry on failure). The store keeps
+  showing the published version. Preview (⋯ → Preview) shows the draft to admins only.
+- **Publish** validates the draft and, in one transaction, copies it to the live theme and records a numbered version.
+  Publishing a library theme also makes it the live theme and its menus the store menus.
+- **Version history** (clock icon) lists every publish; *Roll back* republishes an earlier version.
+- Every write carries the revision it started from; if another window saved meanwhile, the save is refused
+  (HTTP 409) instead of overwriting it. Reload to continue.
+- Menus and pages are saved immediately (they are separate records, not part of the draft).
+
+## Security
+
+- Zips are size-, file-count- and extracted-size-limited; entries with `..` or absolute paths are rejected.
+- Uploaded code is never executed on the server. HTML template pages run in a sandboxed, opaque-origin frame.
+- Settings are validated against the schema (colors, URLs without `javascript:`/`data:`, ranges clamped).
+- The original upload is stored unchanged (⋯ → Download original upload); installed copies are edited.
+- All theme endpoints require an admin session. The store is single-tenant: there is no per-store isolation to enforce.
