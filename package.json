@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
+    "db:copy": "bun scripts/copy-database.ts",
     "db:reset": "prisma migrate reset",
     "admin:create": "bun scripts/create-admin.ts",
     "typecheck": "tsc --noEmit",
