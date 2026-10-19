@@ -73,6 +73,12 @@ export function failure(error: unknown) {
   if (code === 'P2002') return NextResponse.json({ error: 'A record with that value already exists' }, { status: 409 })
   if (code === 'P2025') return NextResponse.json({ error: 'Record not found' }, { status: 404 })
   if (code === 'P2003') return NextResponse.json({ error: 'This record is referenced by another record' }, { status: 409 })
+  // The database host refused the query (plan quota used up, or unreachable): say so instead of a generic failure.
+  const message = error instanceof Error ? error.message : ''
+  if (/exceeded the quota|Can't reach database server/i.test(message) || code === 'P1001') {
+    console.error('Database unavailable', message.split('\n').pop())
+    return NextResponse.json({ error: 'The store database is unavailable right now (hosting limit reached or offline). Please try again later.' }, { status: 503 })
+  }
   console.error('Backend operation failed', error instanceof Error ? error.name : 'UnknownError')
   return NextResponse.json({ error: 'Operation failed. Please try again.' }, { status: 500 })
 }

@@ -19,3 +19,11 @@ test('rejects cross-site and malformed origins', () => {
 test('ignores safe methods', () => {
   expect(() => checkOrigin(new Request('http://localhost:3000/', { headers: { origin: 'https://evil.example' } }))).not.toThrow()
 })
+
+test('a database refusing queries (quota exceeded) answers 503 with a clear message', async () => {
+  const { failure } = await import('../src/backend/lib/auth')
+  const res = failure(new Error('Invalid `db.user.findUnique()` invocation:\nError querying the database: ERROR: Your account or project has exceeded the quota. Upgrade your plan to increase limits.'))
+  expect(res.status).toBe(503)
+  expect((await res.json()).error).toMatch(/database is unavailable/)
+  expect(failure(new Error('something else')).status).toBe(500)
+})
