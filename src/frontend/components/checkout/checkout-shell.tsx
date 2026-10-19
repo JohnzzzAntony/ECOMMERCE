@@ -2,14 +2,19 @@
 // Minimal page frame for checkout (no store chrome, so the shopper stays focused on paying).
 import { useEffect, type ReactNode } from 'react'
 import { useStore } from '@/frontend/store/use-store'
+import { ThemeContext } from '@/frontend/lib/theme'
+import { StoreLogo } from '@/frontend/components/layout/header'
+import type { StorefrontTheme } from '@/shared/theme'
 import { FROM_CART_KEY } from './checkout-form'
 
-export function CheckoutShell({ title, children }: { title: string; children: ReactNode }) {
+/** `theme` = the active storefront theme, so the header shows the store's own logo. */
+export function CheckoutShell({ title, theme, children }: { title: string; theme: StorefrontTheme | null; children: ReactNode }) {
   return (
+    <ThemeContext.Provider value={theme}>
     <div className="min-h-screen bg-white">
       <header className="border-b border-border">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-          <a href="/" className="flex items-center gap-2 font-semibold text-brand-ink"><img src="/logo.svg" alt="" width={28} height={28} /> NexEcoms</a>
+          <a href="/" aria-label="Home"><StoreLogo /></a>
           <a href="/" className="text-sm text-muted-foreground hover:text-brand-ink">Continue shopping</a>
         </div>
       </header>
@@ -18,6 +23,7 @@ export function CheckoutShell({ title, children }: { title: string; children: Re
         {children}
       </main>
     </div>
+    </ThemeContext.Provider>
   )
 }
 
