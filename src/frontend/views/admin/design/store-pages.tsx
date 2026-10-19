@@ -35,7 +35,7 @@ export function StorePagesSection() {
     } catch (e) { toast.error(errorMessage(e)) }
   }
 
-  if (editing) return <PageEditor pageId={editing} onBack={() => { setEditing(null); load() }} />
+  if (editing) return <PageEditor key={editing} pageId={editing} onBack={() => { setEditing(null); load() }} pages={pages ?? []} onOpenPage={setEditing} />
   if (error) return <LoadError message={error} onRetry={load} />
   if (!pages) return <div className="flex justify-center py-16"><Loader2 className="size-6 animate-spin" /></div>
   const existing = new Set(pages.map((p) => p.type))

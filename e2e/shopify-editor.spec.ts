@@ -77,9 +77,9 @@ test('exact Figma page edits like a Shopify theme', async ({ page }) => {
   // 5. Blocks: duplicate a card (auto layout), hide a layer; absolute layers can't be duplicated.
   await preview.getByText('Expert support', { exact: true }).click()
   await inspector.getByRole('list', { name: 'Layers' }).getByRole('button', { name: /^Card$/ }).last().click()
-  await inspector.getByRole('button', { name: 'Duplicate layer' }).click()
+  await inspector.getByRole('button', { name: 'Duplicate', exact: true }).click()
   await expect(preview.getByText('Expert support', { exact: true })).toHaveCount(2)
-  await inspector.getByRole('button', { name: 'Hide layer' }).click()
+  await inspector.getByRole('button', { name: 'Hide', exact: true }).click()
   await expect(preview.getByText('Expert support', { exact: true })).toHaveCount(1)
 
   // 6. Sections: hide one, add a library section after the selected one, undo the add.

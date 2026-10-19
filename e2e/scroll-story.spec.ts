@@ -18,7 +18,7 @@ const key = (code: number, dest: string) => ({ trigger: { type: 'ON_KEY_DOWN', d
 const screen = (id: string, x: number, title: string, color: { r: number; g: number; b: number }, interactions: unknown[]) => ({
   id, name: 'Story', type: 'FRAME', fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }], ...box(x, 0, 1280, 720),
   children: [
-    { id: `${id}-bg`, name: 'Backdrop', type: 'RECTANGLE', fills: [{ type: 'SOLID', color }], ...box(x, 0, 1280, 720) },
+    { id: `${id}-bg`, name: 'Backdrop', type: 'RECTANGLE', fills: [{ type: 'SOLID', color }, ...(id === '7:1' ? [{ type: 'IMAGE', imageRef: 'img-hero', scaleMode: 'FILL' }] : [])], ...box(x, 0, 1280, 720) },
     { id: `${id}-t`, name: 'Title', type: 'TEXT', characters: title, style: { fontFamily: 'Inter', fontWeight: 700, fontSize: 48 }, fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }], ...box(x + 80, 300, 800, 60), interactions },
   ],
 })
@@ -74,18 +74,19 @@ test('scroll story: scroll through scenes with smart animate; video on a layer',
   await expect(preview.getByText('Scene one', { exact: true })).toBeVisible()
   await page.getByRole('list', { name: 'Sections' }).getByRole('listitem').first().getByRole('button').nth(1).click()
   const inspector = page.locator('aside').last()
-  const design = inspector.getByLabel('Design')
-  await expect(design.locator('option')).toHaveText(['Scene 1', 'Scene 2', 'Scene 3'])
-  await design.selectOption({ label: 'Scene 3' })
+  // Shopify-style: the screens are listed under the section in the left sidebar.
+  const screens = page.getByRole('list', { name: 'Screens' })
+  await expect(screens.getByRole('button')).toHaveText(['Screen 1', 'Screen 2', 'Screen 3'])
+  await screens.getByRole('button', { name: 'Screen 3' }).click()
   await expect(preview.getByText('Scene three', { exact: true })).toBeVisible()
-  await design.selectOption({ label: 'Scene 1' })
+  await screens.getByRole('button', { name: 'Screen 1' }).click()
   await expect(preview.getByText('Scene one', { exact: true })).toBeVisible()
 
   // Video: select the backdrop layer in the preview, upload a video onto it.
   const backdrop = preview.locator('[data-nid="7:1-bg"]')
   const bb = (await backdrop.boundingBox())!
   await backdrop.click({ position: { x: bb.width * 0.9, y: bb.height * 0.1 } })
-  await expect(inspector.getByText('Video', { exact: true })).toBeVisible()
+  await expect(inspector.getByText('Background video', { exact: true })).toBeVisible()
   await inspector.getByRole('button', { name: 'Upload' }).click()
   const webm = await recordWebm(page)
   await page.getByRole('dialog').locator('input[type=file]').setInputFiles({ name: 'hero.webm', mimeType: 'video/webm', buffer: webm })

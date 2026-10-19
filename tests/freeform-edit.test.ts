@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { IRNode } from '../src/shared/design-ir'
-import { deleteLayer, duplicateLayer, locateLayer, moveLayer, pageBands, setLayerStyle, splitFreeformSection, toggleLayer, type FreeformSettings } from '../src/shared/freeform-edit'
+import { deleteLayer, duplicateLayer, layerName, locateLayer, moveLayer, pageBands, setLayerStyle, splitFreeformSection, toggleLayer, type FreeformSettings } from '../src/shared/freeform-edit'
 import { validateSection, type SectionInstance } from '../src/shared/sections/registry'
 import Freeform from '../src/frontend/components/sections/freeform'
 
@@ -119,4 +119,12 @@ test('invalid style overrides are rejected', () => {
   expect(validateSection(section(page(), { styles: { '1:5': { fontSize: 9999 } } })).ok).toBe(false)
   expect(validateSection(section(page(), { styles: { '1:5': { color: 'red; background:url(x)' } } })).ok).toBe(false)
   expect(validateSection(section(page(), { styles: { '1:5': { textColor: { value: 'red' } } } })).ok).toBe(false)
+})
+
+test('layers get names a shop owner recognises', () => {
+  expect(layerName(text('9:1', 'Shop the collection'))).toBe('Shop the collection')
+  expect(layerName(node('9:2', { name: 'Hero banner' }))).toBe('Hero banner')
+  expect(layerName(node('9:3', { name: 'Frame 18', children: [text('9:4', 'Finest Ingredients')] }))).toBe('Finest Ingredients')
+  expect(layerName(node('9:5', { name: 'Isolation_Mode', kind: 'vector' }))).toBe('Icon')
+  expect(layerName(node('9:6', { name: 'Group 4' }))).toBe('Group')
 })

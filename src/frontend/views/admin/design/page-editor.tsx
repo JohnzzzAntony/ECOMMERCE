@@ -1,7 +1,7 @@
 'use client'
 // Page editor: section tree (drag to reorder), live preview iframe (postMessage, device sizes) and the settings
 // form. Drafts autosave with the revision they were loaded at; publish runs the pre-publish checklist.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -40,25 +40,38 @@ function plainToRichText(text: string, marks: Record<string, unknown>): RichText
 const WIDTH: Record<Device, string> = { desktop: '100%', tablet: '820px', mobile: '390px' }
 const HISTORY_LIMIT = 100
 
-function SortableRow({ section, selected, onSelect, onToggle, onDuplicate, onDelete }: { section: SectionInstance; selected: boolean; onSelect: () => void; onToggle: () => void; onDuplicate: () => void; onDelete: () => void }) {
+/** Name of a section in the list: its own heading, else (Figma sections) the page it was designed as. */
+function sectionTitle(section: SectionInstance, pageTitle: string) {
+  const own = String(section.settings.title || section.settings.text || section.settings.logoText || section.settings.label || '')
+  return own || (section.type === 'freeform' ? pageTitle : SECTIONS[section.type].name)
+}
+
+// Actions appear on hover or keyboard focus, as in Shopify's editor, so names aren't crowded out.
+const ROW_ACTION = 'size-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+
+function SortableRow({ section, title, selected, onSelect, onToggle, onDuplicate, onDelete }: { section: SectionInstance; title: string; selected: boolean; onSelect: () => void; onToggle: () => void; onDuplicate: () => void; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
   const def = SECTIONS[section.type]
-  const title = String(section.settings.title || section.settings.text || section.settings.logoText || section.settings.label || '') || def.name
+  const screens = (section.settings.scenes as string[] | undefined)?.length
+  const subtitle = screens ? `${screens + 1} screens` : title === def.name ? '' : def.name
   return (
-    <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`flex items-center gap-1 rounded-md border bg-background px-1 py-1 ${selected ? 'border-brand-teal ring-1 ring-brand-teal' : ''} ${isDragging ? 'z-10 shadow-lg' : ''} ${section.hidden ? 'opacity-50' : ''}`}>
-      <button type="button" className="cursor-grab p-1 text-muted-foreground" aria-label={`Reorder ${def.name}`} {...attributes} {...listeners}><GripVertical className="size-4" /></button>
+    <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`group flex items-center gap-1 rounded-md border bg-background px-1 py-1 ${selected ? 'border-brand-teal ring-1 ring-brand-teal' : ''} ${isDragging ? 'z-10 shadow-lg' : ''} ${section.hidden ? 'opacity-50' : ''}`}>
+      <button type="button" className="cursor-grab p-1 text-muted-foreground" aria-label={`Reorder ${title}`} {...attributes} {...listeners}><GripVertical className="size-4" /></button>
       <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left">
         <div className="truncate text-sm font-medium">{title}</div>
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">{def.name}{section.mappingConfidence < 0.6 && section.figmaNodeId && <AlertTriangle className="size-3 text-amber-600" aria-label="Low mapping confidence" />}</div>
+        {(subtitle || (section.mappingConfidence < 0.6 && section.figmaNodeId)) && <div className="flex items-center gap-1 text-[11px] text-muted-foreground">{subtitle}{section.mappingConfidence < 0.6 && section.figmaNodeId && <AlertTriangle className="size-3 text-amber-600" aria-label="Low mapping confidence" />}</div>}
       </button>
-      <Button type="button" variant="ghost" size="icon" className="size-7" onClick={onToggle} aria-label={section.hidden ? 'Show section' : 'Hide section'}>{section.hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</Button>
-      <Button type="button" variant="ghost" size="icon" className="size-7" onClick={onDuplicate} aria-label="Duplicate section"><Copy className="size-3.5" /></Button>
-      <Button type="button" variant="ghost" size="icon" className="size-7" onClick={onDelete} aria-label="Delete section"><Trash2 className="size-3.5" /></Button>
+      <Button type="button" variant="ghost" size="icon" className={section.hidden ? 'size-7' : ROW_ACTION} onClick={onToggle} aria-label={section.hidden ? 'Show section' : 'Hide section'}>{section.hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</Button>
+      <Button type="button" variant="ghost" size="icon" className={ROW_ACTION} onClick={onDuplicate} aria-label="Duplicate section"><Copy className="size-3.5" /></Button>
+      <Button type="button" variant="ghost" size="icon" className={ROW_ACTION} onClick={onDelete} aria-label="Delete section"><Trash2 className="size-3.5" /></Button>
     </li>
   )
 }
 
-export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => void }) {
+type PageLink = { id: string; title: string; type: string }
+
+/** pages/onOpenPage: switch pages from the editor (page picker, header and footer shortcuts). */
+export function PageEditor({ pageId, onBack, pages = [], onOpenPage }: { pageId: string; onBack: () => void; pages?: PageLink[]; onOpenPage?: (id: string) => void }) {
   const [data, setData] = useState<PageData | null>(null)
   const [sections, setSections] = useState<SectionInstance[]>([])
   const [revision, setRevision] = useState(0)
@@ -121,7 +134,10 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(save, 1200)
   }
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current) }, [])
+  // Leaving the page (back, page picker) saves pending changes instead of dropping them with the timer.
+  const saveRef = useRef<() => Promise<void>>(async () => {})
+  useEffect(() => { saveRef.current = save }, [save])
+  useEffect(() => () => { if (saveTimer.current) { clearTimeout(saveTimer.current); void saveRef.current() } }, [])
 
   // Preview events: ready, click-to-select, inline text edits of Figma layers.
   useEffect(() => {
@@ -129,7 +145,12 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
       if (e.origin !== window.location.origin || e.source !== iframe.current?.contentWindow) return
       const msg = e.data as PreviewEvent
       if (msg?.type === 'nexecoms:preview-ready') { setPreviewReady(true); post() }
-      else if (msg?.type === 'nexecoms:select' && sections.some((s) => s.id === msg.sectionId)) setSelected(msg.sectionId, msg.nodeId)
+      else if (msg?.type === 'nexecoms:select' && sections.some((s) => s.id === msg.sectionId)) {
+        setSelected(msg.sectionId, msg.nodeId)
+        const section = sections.find((s) => s.id === msg.sectionId)!
+        const at = msg.nodeId && section.type === 'freeform' ? locateLayer(section.settings as unknown as FreeformSettings, msg.nodeId) : null
+        if (at?.key === 'tree') setScene('@'); else if (at?.key.startsWith('scene:')) setScene(at.key.slice(6))
+      }
       else if (msg?.type === 'nexecoms:edit-text' && typeof msg.text === 'string') {
         const s = sections.find((x) => x.id === msg.sectionId && x.type === 'freeform')
         if (!s) return
@@ -197,6 +218,12 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
   }
 
   if (!data) return <div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin" /></div>
+  // Shortcut to the store-wide header or footer page (shown on every page), as in Shopify's section list.
+  const globalRow = (type: string, label: string) => {
+    const target = pages.find((p) => p.type === type)
+    if (!target || !onOpenPage || data.page.type === type) return null
+    return <button type="button" onClick={() => onOpenPage(target.id)} className="flex w-full items-center justify-between rounded-md border border-dashed px-3 py-2 text-left text-sm text-muted-foreground hover:border-brand-teal hover:text-foreground">{label}<span className="text-[11px]">Every page</span></button>
+  }
   const current = sections.find((s) => s.id === selected)
   const errors = checklist?.filter((c) => c.level === 'error') ?? []
 
@@ -204,7 +231,11 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-4" /> Pages</Button>
-        <h2 className="text-lg font-semibold">{data.page.title}</h2>
+        {pages.length > 1 && onOpenPage
+          ? <select aria-label="Page" value={pageId} onChange={(e) => onOpenPage(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-base font-semibold">
+              {pages.map((p) => <option key={p.id} value={p.id}>{p.title}{p.type === 'HEADER' ? ' (header)' : p.type === 'FOOTER' ? ' (footer)' : p.type === 'ANNOUNCEMENT' ? ' (announcement bar)' : ''}</option>)}
+            </select>
+          : <h2 className="text-lg font-semibold">{data.page.title}</h2>}
         <Badge variant="outline">{data.page.published ? 'Published' : 'Not published'}</Badge>
         <span className="text-xs text-muted-foreground" aria-live="polite">{{ idle: '', pending: 'Unsaved changes…', saving: 'Saving…', saved: 'Draft saved', conflict: 'Changed elsewhere — reload' }[saving]}</span>
         {saving === 'conflict' && <Button size="sm" variant="outline" onClick={() => load()}>Reload</Button>}
@@ -224,20 +255,32 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
 
       <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
         <aside className="space-y-2 rounded-lg border bg-card p-2">
+          {globalRow('HEADER', 'Header')}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <ul className="space-y-1.5" aria-label="Sections">
                 {sections.map((s) => (
-                  <SortableRow key={s.id} section={s} selected={s.id === selected} onSelect={() => setSelected(s.id)}
+                  <Fragment key={s.id}>
+                  <SortableRow section={s} title={sectionTitle(s, data.page.title)} selected={s.id === selected} onSelect={() => setSelected(s.id)}
                     onToggle={() => change(sections.map((x) => (x.id === s.id ? { ...x, hidden: !x.hidden } : x)))}
                     onDuplicate={() => { const i = sections.indexOf(s); change([...sections.slice(0, i + 1), { ...structuredClone(s), id: newId(), figmaNodeId: null }, ...sections.slice(i + 1)]) }}
                     onDelete={() => { if (window.confirm('Delete this section?')) { change(sections.filter((x) => x.id !== s.id)); if (selected === s.id) setSelected(null) } }} />
+                  {s.id === selected && !!(s.settings.scenes as string[] | undefined)?.length && (
+                    <li><ul className="ml-6 space-y-0.5 border-l pl-2" aria-label="Screens">
+                      {['@', ...(s.settings.scenes as string[])].map((id, i) => (
+                        <li key={id}><button type="button" onClick={() => { setSelectedNode(null); setScene(id) }}
+                          className={`w-full rounded px-2 py-1 text-left text-xs ${(scene ?? '@') === id ? 'bg-sky-100 font-medium text-sky-950' : 'hover:bg-muted'}`}>Screen {i + 1}</button></li>
+                      ))}
+                    </ul></li>
+                  )}
+                  </Fragment>
                 ))}
               </ul>
             </SortableContext>
           </DndContext>
           {!sections.length && <p className="p-2 text-sm text-muted-foreground">No sections yet.</p>}
           <Button variant="outline" size="sm" className="w-full" onClick={() => setPanel('add')}><Plus className="size-4" /> Add section</Button>
+          {globalRow('FOOTER', 'Footer')}
         </aside>
 
         <div className="flex min-h-[70vh] justify-center overflow-auto rounded-lg border bg-muted/40 p-2">
@@ -250,9 +293,14 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
         <aside className="max-h-[80vh] overflow-y-auto rounded-lg border bg-card p-3">
           {current ? (
             <>
-              <div className="mb-3 flex items-center justify-between"><div className="font-semibold">{SECTIONS[current.type].name}</div>{device !== 'desktop' && <Badge variant="outline">Editing {device}</Badge>}</div>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                {selectedNode
+                  ? <button type="button" onClick={() => setSelectedNode(null)} className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4 shrink-0" /><span className="truncate">{sectionTitle(current, data.page.title)}</span></button>
+                  : <div className="font-semibold">{sectionTitle(current, data.page.title)}</div>}
+                {device !== 'desktop' && <Badge variant="outline">Editing {device}</Badge>}
+              </div>
               <SectionSettings key={current.id} section={current} device={device} ctx={ctx} onChange={(s) => change(sections.map((x) => (x.id === s.id ? s : x)))}
-                selectedNode={selectedNode} onSplit={() => splitSection(current)} onShowScene={(key) => setScene(key.startsWith('scene:') ? key.slice(6) : '@')}
+                selectedNode={selectedNode} onSplit={() => splitSection(current)} scene={scene}
                 onSelectNode={(id) => {
                   setSelectedNode(id)
                   const at = id && current.type === 'freeform' ? locateLayer(current.settings as unknown as FreeformSettings, id) : null

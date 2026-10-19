@@ -58,7 +58,7 @@ test('Figma design → published storefront page → rollback', async ({ page },
   // 4. Edit: alt text and a button destination (the design linked to a frame that wasn't imported).
   await page.goto('/admin?section=store-pages')
   await page.getByRole('button', { name: 'Edit' }).first().click()
-  await page.getByRole('button', { name: /Care that moves with you/ }).click()
+  await page.getByRole('button', { name: /^Care that moves with you/ }).click()
   await page.getByLabel('Alt text').first().fill('Nurse helping a patient at home')
   const link = field(page, 'Button link')
   await link.locator('select').first().selectOption('url')
@@ -89,7 +89,7 @@ test('Figma design → published storefront page → rollback', async ({ page },
   // 6. Change and publish again, then roll back to version 1.
   await page.goto('/admin?section=store-pages')
   await page.getByRole('button', { name: 'Edit' }).first().click()
-  await page.getByRole('button', { name: /Free delivery over 500 AED/ }).click()
+  await page.getByRole('button', { name: /^Free delivery over 500 AED/ }).click()
   await field(page, 'Message').locator('input').fill('Summer sale this week')
   await publishCurrentPage(page)
   await page.goto('/')

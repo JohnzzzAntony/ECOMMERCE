@@ -24,8 +24,21 @@ export function layerTrees(s: FreeformSettings): [TreeKey, IRNode][] {
 
 /** Label of a design in the layer panel. */
 export function treeLabel(s: FreeformSettings, key: TreeKey) {
-  if (key.startsWith('scene:')) return `Scene ${(s.scenes ?? []).indexOf(key.slice(6)) + 2}`
-  return { tree: s.scenes?.length ? 'Scene 1' : 'Desktop', tablet: 'Tablet', mobile: 'Mobile' }[key as 'tree' | 'tablet' | 'mobile']
+  if (key.startsWith('scene:')) return `Screen ${(s.scenes ?? []).indexOf(key.slice(6)) + 2}`
+  return { tree: s.scenes?.length ? 'Screen 1' : 'Desktop', tablet: 'Tablet', mobile: 'Mobile' }[key as 'tree' | 'tablet' | 'mobile']
+}
+
+// Figma's default layer names ("Frame 18", "Group 4", "Isolation_Mode") mean nothing to a shop owner.
+const GENERIC_NAME = /^(frame|group|rectangle|ellipse|vector|component|instance|isolation_mode|image|layer|union|subtract|mask)[\s\d_-]*$/i
+
+/** A name a shop owner recognises: the text itself, else the Figma name, else the first text inside the layer. */
+export function layerName(n: IRNode): string {
+  const short = (t: string) => (t.length > 40 ? `${t.slice(0, 40)}…` : t)
+  if (n.kind === 'text') return short(n.text?.runs.map((r) => r.text).join('').trim() || n.name)
+  if (!GENERIC_NAME.test(n.name.trim())) return n.name
+  let text = ''
+  walkIR(n, (x) => { if (!text && x.kind === 'text') text = x.text?.runs.map((r) => r.text).join('').trim() ?? '' })
+  return text ? short(text) : n.kind === 'image' ? 'Image' : n.kind === 'vector' ? 'Icon' : 'Group'
 }
 
 export type LayerLocation = { key: TreeKey; node: IRNode; parent: IRNode | null; index: number }
