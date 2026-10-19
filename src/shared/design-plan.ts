@@ -38,21 +38,32 @@ export function guessPageType(name: string): PageType {
   return 'PAGE'
 }
 
-export type PlanPage = { title: string; type: PageType; slug?: string; frames: Partial<Record<Device, string>> }
+export const PAGE_LAYOUTS = ['exact', 'sections'] as const
+export type PageLayout = (typeof PAGE_LAYOUTS)[number]
+export const PAGE_LAYOUT_LABELS: Record<PageLayout, string> = { exact: 'Exact Figma design', sections: 'Editable sections' }
+/** Templates and the cart need live commerce sections, so they default to mapped sections. */
+export const defaultLayout = (type: PageType): PageLayout => (type === 'PRODUCT_TEMPLATE' || type === 'COLLECTION_TEMPLATE' || type === 'CART' ? 'sections' : 'exact')
+
+export type PlanPage = { title: string; type: PageType; slug?: string; layout?: PageLayout; frames: Partial<Record<Device, string>> }
 
 /**
  * Groups selected frames into pages: same base name → one page with a frame per device. A second frame for a
  * device already taken starts a new page. Types are guessed from names; each single-instance type is given
  * to the first page only.
  */
-export function pairFrames(frames: PickerFrame[]): PlanPage[] {
+export function pairFrames(frames: PickerFrame[], preferredHomeId?: string | null): PlanPage[] {
   const pages: PlanPage[] = []
   const byBase = new Map<string, PlanPage[]>()
   for (const frame of frames) {
     const { base, device } = frameDevice(frame)
     const key = base.toLowerCase()
     const candidates = byBase.get(key) ?? []
-    let page = candidates.find((p) => !p.frames[device])
+    const titleType = guessPageType(base)
+    // Repeated Home frames usually represent separate explorations, unless their names label devices.
+    const named = frameDevice(frame).named
+    let page = titleType === 'HOME' && !named
+      ? undefined
+      : candidates.find((p) => !p.frames[device] && (titleType !== 'HOME' || named))
     if (!page) {
       page = { title: base, type: 'PAGE', frames: {} }
       candidates.push(page); byBase.set(key, candidates); pages.push(page)
@@ -64,7 +75,21 @@ export function pairFrames(frames: PickerFrame[]): PlanPage[] {
     const type = guessPageType(page.title)
     page.type = SINGLE_TYPES.includes(type) && used.has(type) ? 'PAGE' : type
     used.add(page.type)
+    page.layout = defaultLayout(page.type)
     if (page.type === 'PAGE') page.slug = uniqueSlug(slugify(page.title) || 'page', pages)
+  }
+  if (preferredHomeId) {
+    const preferred = pages.find((p) => Object.values(p.frames).includes(preferredHomeId))
+    if (preferred) {
+      const currentHome = pages.find((p) => p.type === 'HOME')
+      if (currentHome && currentHome !== preferred) {
+        currentHome.type = 'PAGE'
+        currentHome.slug = uniqueSlug(slugify(currentHome.title) || 'page', pages)
+      }
+      preferred.type = 'HOME'
+      delete preferred.slug
+      preferred.layout = defaultLayout('HOME')
+    }
   }
   return pages
 }
@@ -85,6 +110,7 @@ export const importPlanSchema = z.object({
     title: z.string().trim().min(1, 'Every page needs a title').max(120),
     type: z.enum(PAGE_TYPES),
     slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slugs use lowercase letters, numbers and dashes').max(80).optional(),
+    layout: z.enum(PAGE_LAYOUTS).optional(),
     frames: z.object({ desktop: nodeId.optional(), tablet: nodeId.optional(), mobile: nodeId.optional() })
       .refine((f) => f.desktop || f.tablet || f.mobile, 'Every page needs at least one frame'),
   })).min(1, 'Select at least one frame').max(50, 'Import at most 50 pages at a time'),

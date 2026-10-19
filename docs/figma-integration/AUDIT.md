@@ -143,6 +143,7 @@ and commit or stash the in-progress theme work before Phase 1 starts.
 | Catalog | Commerce sections read the existing (global) catalog — non-legacy stores share it until the catalog is made multi-tenant (C1). |
 | CSP | Applied to Figma storefront routes and previews; `/` (shared with the theme storefront) keeps its previous headers. |
 | Test runner | `bun test` (unit + MSW integration), real PostgreSQL via `embedded-postgres` for RLS/worker tests, Playwright + axe + pixelmatch for E2E, Lighthouse CI config. |
+| Fidelity | Per-page layout `exact` (default for HOME/PAGE/HEADER/FOOTER) keeps the whole frame as one freeform section with device trees, scaled with `--u` (CSS px per Figma px, from container query units). Figma scrolling frames, fixed/sticky layers and "Change to" variant interactions (smart animate via FLIP + Web Animations, springs sampled to `linear()`) are rendered; variants are fetched with `/nodes` during FETCHING. `sections` keeps the template mapping. |
 
 ## 3. How the feature fits
 

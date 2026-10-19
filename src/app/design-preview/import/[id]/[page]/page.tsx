@@ -7,6 +7,7 @@ import { renderPreview } from '@/backend/lib/storefront'
 import type { ImportResult } from '@/backend/lib/design-import/pipeline'
 import { PreviewClient } from '@/frontend/components/sections/preview-client'
 import type { StorePageType } from '@/shared/store-pages'
+import { IR_KEYS } from '@/shared/design-ir'
 import { requestOrigin } from '../../../../_storefront/store-route'
 
 export const dynamic = 'force-dynamic'
@@ -15,7 +16,7 @@ type Props = { params: Promise<{ id: string; page: string }>; searchParams: Prom
 
 /** Pending (unresolved) image references render as empty images. */
 const dropPending = (v: unknown): unknown => Array.isArray(v) ? v.map(dropPending) : v && typeof v === 'object'
-  ? (typeof (v as { url?: unknown }).url === 'string' && String((v as { url: string }).url).startsWith('pending:') ? null : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === 'tree' ? x : dropPending(x)])))
+  ? (typeof (v as { url?: unknown }).url === 'string' && String((v as { url: string }).url).startsWith('pending:') ? null : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, IR_KEYS.has(k) ? x : dropPending(x)])))
   : v
 
 export default async function ImportPreview({ params, searchParams }: Props) {

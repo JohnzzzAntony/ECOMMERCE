@@ -2,7 +2,7 @@
 // in src/frontend/components/sections (one file per type, loaded on demand). Shared by the mapping engine,
 // admin editor and storefront renderer.
 import { z } from 'zod'
-import { f, rt, styleFields } from './fields'
+import { f, layerStyleSchema, rt, styleFields } from './fields'
 
 export const SECTION_TYPES = [
   'announcement-bar', 'header', 'footer', 'hero', 'hero-slideshow', 'image-with-text', 'rich-text', 'feature-grid',
@@ -181,11 +181,20 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
     hints: { keywords: ['spacer', 'space', 'divider', 'gap'] },
   }),
   freeform: def({
-    type: 'freeform', name: 'Freeform (from Figma)', icon: 'Shapes', description: 'Figma layout kept as designed; text, images and links stay editable.',
+    type: 'freeform', name: 'Figma section', icon: 'Shapes', description: 'Figma layout kept as designed; every layer can be selected, edited, styled, hidden or removed.',
     allowedPageTypes: [...CONTENT, 'HEADER', 'FOOTER', 'ANNOUNCEMENT'],
-    // tree: the IR layout (src/shared/design-ir.ts), fixed structure. Edits go to the override maps keyed by node id.
+    // tree: the IR layout (src/shared/design-ir.ts). The editor can hide, delete, duplicate and reorder layers
+    // (src/shared/freeform-edit.ts); content and style edits go to the override maps keyed by node id.
+    // trees: the same section designed for tablet/mobile (exact layout); variants: component variants that
+    // prototype interactions change to (hover states, carousels, timed loops).
     settings: z.object({
+      label: z.string().max(120).default(''),
+      hiddenLayers: z.array(z.string().max(100)).max(5000).default([]),
+      styles: z.record(z.string().max(100), layerStyleSchema).default({}),
       tree: z.any(),
+      trees: z.partialRecord(z.enum(['tablet', 'mobile']), z.any()).default({}),
+      variants: z.record(z.string(), z.any()).default({}),
+      exact: z.boolean().default(false),
       texts: z.record(z.string(), z.any()).default({}),
       images: z.record(z.string(), z.any()).default({}),
       links: z.record(z.string(), z.any()).default({}),

@@ -136,6 +136,13 @@ implementation choices:
 
 - **Rich text** is structured runs (bold/italic/underline/strike/link), edited as light markup; there is no HTML
   field anywhere, so "sanitizing" is schema validation and links are restricted to http(s)/mailto/tel/internal.
+- **Shopify-style editing of Figma designs** (`src/shared/freeform-edit.ts`): exact pages are split into one
+  section per horizontal band of the frame (layers that overlap vertically stay together; refused when the look would
+  change or device designs don't pair up), so parts can be reordered, hidden or removed and library sections inserted
+  between them. Inside a section the editor shows a layer tree: hide, delete, and, inside auto layout, duplicate and
+  reorder; the inspector edits text, link, image and per-layer style overrides (`styles`, validated by
+  `layerStyleSchema`). The preview iframe outlines on hover, selects on click (`nexecoms:select`) and edits text in
+  place on double-click (`nexecoms:edit-text`).
 - **Responsive overrides**: numeric/layout keys become per-breakpoint CSS variables; text and images use
   breakpoint-specific spans and `<picture>` sources.
 - **Caching**: in-process memo keyed `tenant:{id}:page:{slug}:v{versionId}`, cleared on publish (no Redis).

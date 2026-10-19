@@ -30,28 +30,30 @@ async function publishCurrentPage(page: Page) {
 test('Figma design → published storefront page → rollback', async ({ page }, testInfo) => {
   await login(page)
 
-  // 1. Connect Figma with (mocked) OAuth.
+  // 1. Connect Figma with a personal access token.
   await page.goto('/admin?section=figma')
-  await page.getByRole('button', { name: 'Connect with Figma' }).click()
+  await page.getByLabel('Personal access token').fill('figd_e2e_personal_access_token_00000')
+  await page.getByRole('button', { name: 'Save token' }).click()
   await expect(page.locator('[data-slot=badge]', { hasText: 'Connected' })).toBeVisible()
   await expect(page.getByText('E2E Designer')).toBeVisible()
 
   // 2. Pick frames and queue the import.
   await page.goto('/admin?section=designs')
   await page.locator('#figma-link').fill('https://www.figma.com/design/AbCdEfGhIj1234567890/Medi-Store')
-  await page.getByRole('button', { name: 'Open', exact: true }).click()
+  await page.locator('form').getByRole('button', { name: 'Open', exact: true }).click()
   await page.getByRole('button', { name: /Home \/ Desktop/ }).click()
   await page.getByRole('button', { name: /Home \/ Mobile/ }).click()
   await expect(page.getByText('Pages to create (1)')).toBeVisible()
-  await page.getByRole('button', { name: 'Queue import' }).click()
+  await page.getByRole('button', { name: 'Edit page names and types' }).click()
+  await page.getByLabel('Layout').first().selectOption('sections') // this flow edits template sections
+  await page.getByRole('button', { name: /^Import \d+ pages?$/ }).click()
   await expect(page.getByText('Import queued')).toBeVisible()
 
   // 3. Review and install.
-  await page.getByRole('button', { name: 'Open', exact: true }).or(page.getByRole('button', { name: 'Review', exact: true })).last().click()
   await expect(page.getByRole('button', { name: 'Install as drafts' })).toBeVisible({ timeout: 120_000 })
   await expect(page.getByLabel('Section type').nth(1)).toHaveValue('hero')
   await page.getByRole('button', { name: 'Install as drafts' }).click()
-  await expect(page.getByText('Installed as drafts')).toBeVisible()
+  await expect(page.getByText('Installed as drafts').first()).toBeVisible()
 
   // 4. Edit: alt text and a button destination (the design linked to a frame that wasn't imported).
   await page.goto('/admin?section=store-pages')
@@ -101,4 +103,30 @@ test('Figma design → published storefront page → rollback', async ({ page },
   await expect(page.getByText('Rolled back')).toBeVisible()
   await page.goto('/')
   await expect(page.getByText('Free delivery over 500 AED')).toBeVisible()
+})
+
+test('exact Figma layout: whole frame per device, rendered by the server and hydrated without errors', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await login(page)
+  await page.goto('/admin?section=designs')
+  await page.locator('#figma-link').fill('https://www.figma.com/design/AbCdEfGhIj1234567890/Medi-Store')
+  await page.locator('form').getByRole('button', { name: 'Open', exact: true }).click()
+  await page.getByRole('button', { name: /Home \/ Desktop/ }).click()
+  await page.getByRole('button', { name: /Home \/ Mobile/ }).click()
+  await page.getByRole('button', { name: 'Edit page names and types' }).click()
+  await expect(page.getByLabel('Layout').first()).toHaveValue('exact') // default for new imports
+  await page.getByRole('button', { name: /^Import \d+ pages?$/ }).click()
+  await expect(page.getByText('Import queued')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Install as drafts' })).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByText('Pages and layout')).toBeVisible()
+
+  const preview = page.frameLocator('iframe[title="Preview"]')
+  await expect(preview.locator('[data-section-type="freeform"]')).toHaveCount(1)
+  await expect(preview.locator('[data-dev="base"]')).toBeVisible()
+  await expect(preview.getByRole('heading', { level: 1 })).toHaveCount(1)
+  await page.getByRole('button', { name: 'mobile', exact: true }).click() // 390 px preview → the mobile frame
+  await expect(preview.locator('[data-dev="mobile"]')).toBeVisible()
+  await expect(preview.locator('[data-dev="base"]')).toBeHidden()
+  expect(errors).toEqual([])
 })

@@ -74,6 +74,37 @@ export function fieldMeta(schema: z.ZodType): FieldMeta | undefined {
   return schema.meta() as FieldMeta | undefined
 }
 
+/**
+ * Per-layer style overrides of a freeform (Figma) section, keyed by IR node id. Lengths are Figma px (scaled like
+ * the rest of the layer on exact pages); unset keys keep the Figma value.
+ */
+export const LAYER_STYLE_FIELDS = {
+  textColor: { control: 'color', label: 'Text colour' },
+  fontSize: { control: 'range', label: 'Font size', min: 6, max: 200, step: 1, unit: 'px' },
+  fontWeight: { control: 'select', label: 'Font weight', options: [100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => ({ value: String(w), label: String(w) })) },
+  align: { control: 'select', label: 'Text alignment', options: ['left', 'center', 'right', 'justify'].map((v) => ({ value: v, label: v })) },
+  background: { control: 'color', label: 'Background' },
+  paddingY: { control: 'range', label: 'Padding top and bottom', min: 0, max: 400, step: 1, unit: 'px' },
+  paddingX: { control: 'range', label: 'Padding left and right', min: 0, max: 400, step: 1, unit: 'px' },
+  gap: { control: 'range', label: 'Space between items', min: 0, max: 400, step: 1, unit: 'px' },
+  radius: { control: 'range', label: 'Corner radius', min: 0, max: 500, step: 1, unit: 'px' },
+  opacity: { control: 'range', label: 'Opacity', min: 0, max: 100, step: 5, unit: '%' },
+} satisfies Record<string, FieldMeta>
+export type LayerStyleKey = keyof typeof LAYER_STYLE_FIELDS
+export const layerStyleSchema = z.object({
+  textColor: colorSchema.optional(),
+  fontSize: z.number().min(6).max(200).optional(),
+  fontWeight: z.coerce.number().int().min(100).max(900).optional(),
+  align: z.enum(['left', 'center', 'right', 'justify']).optional(),
+  background: colorSchema.optional(),
+  paddingY: z.number().min(0).max(400).optional(),
+  paddingX: z.number().min(0).max(400).optional(),
+  gap: z.number().min(0).max(400).optional(),
+  radius: z.number().min(0).max(500).optional(),
+  opacity: z.number().min(0).max(100).optional(),
+}).strict()
+export type LayerStyle = z.infer<typeof layerStyleSchema>
+
 /** Shared look settings every section has. */
 export const styleFields = {
   background: f.color('Background'),

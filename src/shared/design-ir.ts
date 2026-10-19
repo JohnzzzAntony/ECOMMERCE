@@ -41,6 +41,19 @@ export type IRLayout = {
 
 export type IRNodeKind = 'frame' | 'text' | 'image' | 'vector'
 
+/** Prototype transition. easing is a CSS easing (cubic-bezier()/linear(); springs are sampled). */
+export type IRTransition = { type: 'smart' | 'dissolve' | 'instant'; duration: number; easing: string } // duration in ms
+/**
+ * Prototype interaction that swaps a component instance to another variant ("Change to"), e.g. hover states,
+ * carousels (drag/click) and timed loops (after delay). `to` is the variant's node id in IRDocument.variants.
+ */
+export type IRInteraction = {
+  trigger: 'hover' | 'click' | 'press' | 'drag' | 'mouse-enter' | 'mouse-leave' | 'timeout'
+  delay: number // ms, for timeout
+  to: string
+  transition: IRTransition
+}
+
 export type IRNode = {
   id: string
   name: string
@@ -63,8 +76,14 @@ export type IRNode = {
   text?: { runs: IRTextRun[]; style: IRTextStyle }
   image?: { imageRef: string; scaleMode: 'cover' | 'contain' | 'tile' | 'stretch'; assetUrl?: string; alt?: string }
   vector?: { assetUrl?: string } // exported as SVG by the asset stage
-  component?: { name: string; variant: Record<string, string>; primitive?: { type: 'button'; variant: string } }
+  /** overrides: ids of layers in this instance whose text or fills were overridden (kept when changing variant). */
+  component?: { name: string; variant: Record<string, string>; primitive?: { type: 'button'; variant: string }; overrides?: string[] }
   link?: IRLink
+  /** Figma overflow scrolling: the frame is a scroll viewport onto its (larger) content. */
+  scroll?: 'horizontal' | 'vertical' | 'both'
+  /** Figma "Fix position when scrolling" (fixed) or "Sticky". */
+  position?: 'fixed' | 'sticky'
+  interactions?: IRInteraction[]
   children: IRNode[]
 }
 
@@ -72,14 +91,71 @@ export type IRWarningCode = 'NO_AUTO_LAYOUT' | 'MISSING_FONT' | 'MISSING_ALT' | 
 export type IRWarning = { code: IRWarningCode; nodeId?: string; pageTitle?: string; message: string }
 
 export type IRFrame = { nodeId: string; name: string; device: 'desktop' | 'tablet' | 'mobile'; root: IRNode }
-export type IRPage = { title: string; type: string; slug?: string; frames: IRFrame[] }
-export type IRDocument = { fileKey: string; version: string; pages: IRPage[]; fonts: { family: string; weights: number[]; italic: boolean }[]; warnings: IRWarning[] }
+/** exact: the whole frame is kept as designed (one freeform section per page); sections: mapped to templates. */
+export type PageLayout = 'exact' | 'sections'
+export type IRPage = { title: string; type: string; slug?: string; layout?: PageLayout; frames: IRFrame[] }
+export type IRDocument = {
+  fileKey: string; version: string; pages: IRPage[]; fonts: { family: string; weights: number[]; italic: boolean }[]; warnings: IRWarning[]
+  /** Component variants that interactions change to, by node id. */
+  variants?: Record<string, IRNode>
+}
+
+/** Section setting keys that hold IR trees (freeform): skipped by generic settings walkers, walked by asset code. */
+export const IR_KEYS = new Set(['tree', 'trees', 'variants'])
 
 export const cssColor = (c: IRColor) => (c.a >= 1 ? `#${[c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}` : `rgba(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)}, ${+c.a.toFixed(3)})`)
 
 export function walkIR(node: IRNode, visit: (n: IRNode, parent: IRNode | null) => void, parent: IRNode | null = null) {
   visit(node, parent)
   for (const child of node.children) walkIR(child, visit, node)
+}
+
+/** Variant ids reachable through interactions from the given nodes (following variants' own interactions). */
+export function reachableVariants(roots: IRNode[], variants: Record<string, IRNode> | undefined): Record<string, IRNode> {
+  const out: Record<string, IRNode> = {}
+  if (!variants) return out
+  const queue = [...roots]
+  while (queue.length) {
+    walkIR(queue.pop()!, (n) => {
+      for (const i of n.interactions ?? []) if (!out[i.to] && variants[i.to]) { out[i.to] = variants[i.to]; queue.push(variants[i.to]) }
+    })
+  }
+  return out
+}
+
+/** Layer path used to match layers between variants (Figma smart animate matches by name and hierarchy). */
+export function childPaths(parentPath: string, children: IRNode[]): string[] {
+  const seen = new Map<string, number>()
+  return children.map((c) => { const i = seen.get(c.name) ?? 0; seen.set(c.name, i + 1); return `${parentPath}/${c.name}#${i}` })
+}
+
+/**
+ * The instance switched to `variant`: the variant's layers and styles, the instance's placement, and the
+ * instance's overridden text and images on layers with the same path (as Figma keeps overrides across variants).
+ */
+export function applyVariant(instance: IRNode, variant: IRNode): IRNode {
+  const overridden = new Set(instance.component?.overrides ?? [])
+  const own = new Map<string, IRNode>()
+  const index = (n: IRNode, path: string) => { if (overridden.has(n.id)) own.set(path, n); childPaths(path, n.children).forEach((p, i) => index(n.children[i], p)) }
+  index(instance, '')
+  const merge = (v: IRNode, path: string): IRNode => {
+    const o = own.get(path)
+    const paths = childPaths(path, v.children)
+    return {
+      ...v,
+      ...(o?.text && v.text ? { text: { ...v.text, runs: o.text.runs } } : {}),
+      ...(o?.image && v.image ? { image: o.image } : {}),
+      ...(o && o.fills.some((f) => f.type === 'image') ? { fills: o.fills } : {}),
+      children: v.children.map((c, i) => merge(c, paths[i])),
+    }
+  }
+  const merged = merge(variant, '')
+  return {
+    ...merged,
+    x: instance.x, y: instance.y, width: instance.width, height: instance.height,
+    widthMode: instance.widthMode, heightMode: instance.heightMode, absolute: instance.absolute,
+    position: instance.position, link: instance.link ?? merged.link, component: instance.component,
+  }
 }
 
 export function plainText(node: IRNode) {

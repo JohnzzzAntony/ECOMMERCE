@@ -34,6 +34,7 @@ const { renderPage } = await import('../src/backend/lib/storefront')
 const importRoute = await import('../src/app/api/design/imports/[id]/route')
 const installRoute = await import('../src/app/api/design/imports/[id]/install/route')
 const remapRoute = await import('../src/app/api/design/imports/[id]/sections/route')
+const planRoute = await import('../src/app/api/design/imports/[id]/plan/route')
 const diffRoute = await import('../src/app/api/design/imports/[id]/diff/route')
 const applyRoute = await import('../src/app/api/design/imports/[id]/apply/route')
 const filesRoute = await import('../src/app/api/design/files/route')
@@ -65,6 +66,7 @@ const server = setupServer(
   http.get('https://api.figma.com/v1/files/:key/nodes', ({ request }) => {
     const ids = new URL(request.url).searchParams.get('ids')!.split(',')
     calls.push(`nodes:${ids.join(',')}`)
+    calls.push(`nodes-version:${new URL(request.url).searchParams.get('version')}`)
     return HttpResponse.json({ name: fixture.name, nodes: nodesFor(ids) })
   }),
   http.get('https://api.figma.com/v1/files/:key/images', () => {
@@ -81,6 +83,7 @@ const server = setupServer(
     const ids = url.searchParams.get('ids')!.split(',')
     const format = url.searchParams.get('format')
     calls.push(`images:${format}`)
+    calls.push(`images-version:${url.searchParams.get('version')}`)
     return HttpResponse.json({ err: null, images: Object.fromEntries(ids.map((id) => [id, `https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/${format}/${encodeURIComponent(id)}`])) })
   }),
   http.get('https://s3-alpha-sig.figma.com/img/:name', () => new HttpResponse(png, { headers: { 'Content-Type': 'image/png' } })),
@@ -147,6 +150,8 @@ describe('import → install → edit → publish → storefront → rollback �
     expect(job.rawSnapshotKey).toBe(`tenants/legacy/figma/${FILE_KEY}/imp000000001.json.gz`)
     expect(job.irSnapshotKey).toBe(`tenants/legacy/figma/${FILE_KEY}/imp000000001.ir.json.gz`)
     expect(job.figmaVersion).toBe('42')
+    expect(calls.filter((c) => c.startsWith('nodes-version:'))).toEqual(['nodes-version:42'])
+    expect(calls.filter((c) => c.startsWith('images-version:'))).toEqual(['images-version:42', 'images-version:42'])
     expect(fake.table('figmaFile')[0]).toMatchObject({ version: '42', latestVersion: '42' })
     const page = job.result.pages[0]
     expect(page.sections.map((s: any) => s.type)).toEqual(['announcement-bar', 'hero', 'feature-grid', 'product-grid', 'faq', 'rich-text'])
@@ -320,6 +325,31 @@ describe('asset downloads (SSRF guard)', () => {
     await expect(safeFetch('https://s3-alpha-sig.figma.com/img/redirect-out', FIGMA_ASSET_HOSTS)).rejects.toThrow('Blocked asset host 169.254.169.254')
     expect((await safeFetch('https://s3-alpha-sig.figma.com/img/redirect-in', FIGMA_ASSET_HOSTS)).data.equals(png)).toBe(true)
     await expect(safeFetch('https://s3-alpha-sig.figma.com/img/huge', FIGMA_ASSET_HOSTS, 1024)).rejects.toThrow('too large')
+  })
+})
+
+describe('review: rebuild pages with the exact layout', () => {
+  beforeAll(seed)
+  test('re-pairs and re-maps from the stored snapshot; a days-long rate limit leaves warnings, not a stuck import', async () => {
+    await runImport('legacy', 'imp000000001')
+    const job = fake.table('designImport')[0]
+    const nodeCalls = calls.filter((c) => c.startsWith('nodes:')).length
+    const bad = await planRoute.POST(req(A, users.editorA, '/x', json({ pages: [{ title: 'Home', type: 'HOME', layout: 'exact', frames: { desktop: '10:1', mobile: '99:9' } }] })), p({ id: job.id }))
+    expect(bad.status).toBe(400) // frames outside this import
+    const res = await planRoute.POST(req(A, users.editorA, '/x', json({ pages: [{ title: 'Home', type: 'HOME', layout: 'exact', frames: { desktop: '10:1', mobile: '10:2' } }] })), p({ id: job.id }))
+    expect(res.status).toBe(200)
+    expect(job).toMatchObject({ status: 'NORMALIZING', irSnapshotKey: null })
+    // Vectors only in the mobile design need new SVG renders; Figma answers with a 4-day Retry-After.
+    server.use(http.get('https://api.figma.com/v1/images/:key', () => new HttpResponse(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Retry-After': '383039' } })))
+    await runImport('legacy', job.id)
+    expect(job.status).toBe('REVIEW')
+    expect(calls.filter((c) => c.startsWith('nodes:')).length).toBe(nodeCalls) // no new download
+    const [section] = job.result.pages[0].sections
+    expect(job.result.pages[0].sections).toHaveLength(1)
+    expect(section.settings).toMatchObject({ exact: true, headingLevel: 'h1' })
+    expect(section.settings.trees.mobile.id).toBe('10:2')
+    expect(job.warnings.some((w: { code: string; message: string }) => w.code === 'ASSET_FAILED' && w.message.includes('Rebuild pages'))).toBe(true)
+    server.resetHandlers()
   })
 })
 

@@ -9,7 +9,7 @@ import { hasRunnableJobs, kickWorker, progressOf } from '@/backend/lib/design-im
 import { audit, requireStoreRole } from '@/backend/lib/tenancy'
 import { figmaAuth } from '@/backend/lib/figma/connection'
 import { fileStructure, flowFrames, frameThumbnails, projectFiles, teamProjects } from '@/backend/lib/figma/files'
-import { importPlanSchema, planFrameIds } from '@/shared/design-plan'
+import { defaultLayout, importPlanSchema, planFrameIds } from '@/shared/design-plan'
 
 const noStore = { 'Cache-Control': 'no-store' }
 const FILE_KEY = /^[A-Za-z0-9]{10,64}$/
@@ -102,6 +102,9 @@ export async function createImport(request: Request) {
     const parsed = importPlanSchema.safeParse(await readJson(request))
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid import selection')
     const plan = parsed.data
+    // New imports preserve the design unless a commerce template needs live sections.
+    // Keep old saved imports unchanged when they are resumed or re-synced.
+    plan.pages = plan.pages.map((page) => ({ ...page, layout: page.layout ?? defaultLayout(page.type) }))
     const branchKey = plan.branchKey ?? null
 
     const auth = await figmaAuth(ctx)

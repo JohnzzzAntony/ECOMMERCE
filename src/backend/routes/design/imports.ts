@@ -16,7 +16,7 @@ import { applyResync, installImport, resyncDiff } from '@/backend/lib/design-imp
 import { signPreviewToken } from '@/backend/lib/preview-token'
 import { plainText, walkIR, type IRDocument, type IRNode } from '@/shared/design-ir'
 import { SECTION_TYPES, type SectionType } from '@/shared/sections/registry'
-import type { ImportPlan } from '@/shared/design-plan'
+import { importPlanSchema, planFrameIds, type ImportPlan } from '@/shared/design-plan'
 
 const noStore = { 'Cache-Control': 'no-store' }
 type Params = { params: Promise<{ id: string }> }
@@ -140,6 +140,32 @@ export async function retryRoute(request: Request, { params }: Params) {
     if (job.status !== 'FAILED') throw new HttpError(409, 'Only failed imports can be retried')
     await ctx.db.designImport.update({ where: { id: job.id }, data: { status: job.rawSnapshotKey ? 'FETCHING' : 'QUEUED', attempts: 0, error: null, lockedAt: null, runAfter: new Date() } })
     await audit(ctx, request, { actorId: ctx.user.id, action: 'design.import.retry', entityType: 'DesignImport', entityId: job.id })
+    background(kickWorker)
+    return NextResponse.json({ ok: true }, { headers: noStore })
+  } catch (error) { return failure(error) }
+}
+
+/**
+ * Change how the imported frames become pages (pairing per device, page types, exact layout vs editable sections).
+ * Re-runs normalize → mapping → assets from the stored Figma snapshot (no new file download; images already
+ * copied are reused). Section changes made in review are re-derived.
+ */
+export async function planRoute(request: Request, { params }: Params) {
+  try {
+    const ctx = await requireStoreRole(request, 'EDITOR')
+    const job = await loadImport(ctx, (await params).id)
+    if (job.status !== 'REVIEW') throw new HttpError(409, 'Pages can only be changed while the import is in review')
+    const input = await readJson(request) as { pages?: unknown }
+    const parsed = importPlanSchema.safeParse({ fileKey: job.file.fileKey, branchKey: job.file.branchKey || null, pages: input?.pages })
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid pages')
+    const unknown = planFrameIds(parsed.data).filter((id) => !job.selectedNodeIds.includes(id))
+    if (unknown.length) throw new HttpError(400, 'Only frames selected for this import can be used; start a new import to add frames')
+    const { assets, frameRenders } = (job.result ?? {}) as ImportResult
+    await ctx.db.designImport.update({
+      where: { id: job.id },
+      data: { pageAssignments: parsed.data.pages as object[], status: 'NORMALIZING', irSnapshotKey: null, result: { assets, frameRenders } as object, warnings: [], attempts: 0, error: null, lockedAt: null, runAfter: new Date() },
+    })
+    await audit(ctx, request, { actorId: ctx.user.id, action: 'design.import.plan', entityType: 'DesignImport', entityId: job.id, diff: { pages: parsed.data.pages } })
     background(kickWorker)
     return NextResponse.json({ ok: true }, { headers: noStore })
   } catch (error) { return failure(error) }

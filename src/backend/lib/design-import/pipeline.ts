@@ -10,10 +10,10 @@ import { storeDb, systemDb, type StoreDb } from '@/backend/lib/tenancy'
 import { figmaAuth } from '@/backend/lib/figma/connection'
 import { FigmaApiError, figmaRequest, type FigmaAuth } from '@/backend/lib/figma/client'
 import { apiKey } from '@/backend/lib/figma/files'
-import { walkIR, type IRDocument, type IRNode, type IRWarning } from '@/shared/design-ir'
+import { IR_KEYS, walkIR, type IRDocument, type IRNode, type IRWarning } from '@/shared/design-ir'
 import type { ImportPlan } from '@/shared/design-plan'
 import type { DesignTokens } from '@/shared/design-tokens'
-import { newContext, normalizeNode, type FigmaNode } from './normalize'
+import { changeTargets, newContext, normalizeNode, type FigmaNode } from './normalize'
 import { extractTokens } from './tokens'
 import { mapPage, type MappedPage, type SavedMapping } from './mapping'
 import { AssetError, FIGMA_ASSET_HOSTS, processImage, safeFetch, storeAsset, type StoredAsset } from './assets'
@@ -27,9 +27,12 @@ export type ImportResult = {
   assets?: Record<string, StoredAsset> // "img:<imageRef>" | "svg:<nodeId>" → stored asset
   assetsDone?: boolean
 }
-type RawSnapshot = {
+type RawNode = { document: FigmaNode; components?: Record<string, { name: string; componentSetId?: string }>; componentSets?: Record<string, { name: string }>; styles?: Record<string, { name: string; styleType?: string }> } | null
+export type RawSnapshot = {
   file: { name: string; version: string; lastModified: string }
-  nodes: Record<string, { document: FigmaNode; components?: Record<string, { name: string; componentSetId?: string }>; componentSets?: Record<string, { name: string }>; styles?: Record<string, { name: string; styleType?: string }> } | null>
+  nodes: Record<string, RawNode>
+  /** Component variants that "Change to" interactions point at (fetched separately; not part of the frames). */
+  variants?: Record<string, RawNode>
 }
 
 export const STAGES: DesignImportStatus[] = ['QUEUED', 'FETCHING', 'NORMALIZING', 'TOKENS', 'MAPPING', 'ASSETS', 'REVIEW']
@@ -38,6 +41,8 @@ const ACTIVE: DesignImportStatus[] = ['QUEUED', 'FETCHING', 'NORMALIZING', 'TOKE
 const MAX_ATTEMPTS = 5
 const LOCK_MS = 10 * 60_000
 const NODES_BATCH = 5
+const MAX_VARIANTS = 200
+const LONG_RATE_LIMIT_MS = 15 * 60_000
 
 type Ctx = { db: StoreDb; store: { id: string } }
 type Job = DesignImport & { file: { fileKey: string; branchKey: string } }
@@ -62,27 +67,75 @@ async function fetchStage(ctx: Ctx, job: Job, auth: FigmaAuth) {
   const nodes: RawSnapshot['nodes'] = {}
   for (let i = 0; i < job.selectedNodeIds.length; i += NODES_BATCH) {
     const ids = job.selectedNodeIds.slice(i, i + NODES_BATCH)
-    const res = await figmaRequest<{ nodes: RawSnapshot['nodes'] }>(`/v1/files/${key}/nodes?ids=${encodeURIComponent(ids.join(','))}`, auth)
+    const res = await figmaRequest<{ nodes: RawSnapshot['nodes'] }>(`/v1/files/${key}/nodes?ids=${encodeURIComponent(ids.join(','))}&version=${encodeURIComponent(meta.version)}`, auth)
     Object.assign(nodes, res.nodes)
   }
   const missing = job.selectedNodeIds.filter((id) => !nodes[id]?.document)
   if (missing.length) throw new HttpError(400, `Frames no longer exist in the Figma file: ${missing.join(', ')}`)
-  const raw: RawSnapshot = { file: { name: meta.name, version: meta.version, lastModified: meta.lastModified }, nodes }
+  const variants = await fetchVariants(key, auth, nodes, meta.version)
+  const raw: RawSnapshot = { file: { name: meta.name, version: meta.version, lastModified: meta.lastModified }, nodes, variants }
   const rawKey = await putSnapshot(ctx.store.id, snapshotKey(ctx.store.id, job.file.fileKey, job.id, 'raw'), raw)
   await ctx.db.figmaFile.update({ where: { id: job.fileId }, data: { name: meta.name, version: meta.version, lastModified: new Date(meta.lastModified), latestVersion: meta.version, lastCheckedAt: new Date() } })
   await advance(ctx, job, { rawSnapshotKey: rawKey, figmaVersion: meta.version, stats: { frames: job.selectedNodeIds.length } })
 }
 
+/** Variants that interactions in the frames (and in those variants, for loops) change to, outside the frames. */
+async function fetchVariants(key: string, auth: FigmaAuth, nodes: RawSnapshot['nodes'], version: string) {
+  const variants: NonNullable<RawSnapshot['variants']> = {}
+  const known = new Set<string>()
+  const collect = (n: FigmaNode) => { known.add(n.id); n.children?.forEach(collect) }
+  Object.values(nodes).forEach((n) => n && collect(n.document))
+  let pending = new Set<string>()
+  Object.values(nodes).forEach((n) => n && changeTargets(n.document, pending))
+  while (pending.size) {
+    const ids = [...pending].filter((id) => !known.has(id) && /^\d+:\d+$/.test(id)).slice(0, MAX_VARIANTS - Object.keys(variants).length)
+    if (!ids.length) break
+    const next = new Set<string>()
+    for (let i = 0; i < ids.length; i += 50) {
+      const res = await figmaRequest<{ nodes: RawSnapshot['nodes'] }>(`/v1/files/${key}/nodes?ids=${encodeURIComponent(ids.slice(i, i + 50).join(','))}&version=${encodeURIComponent(version)}`, auth)
+      for (const id of ids.slice(i, i + 50)) {
+        known.add(id)
+        const n = res.nodes?.[id]
+        if (!n?.document) continue
+        variants[id] = n
+        collect(n.document); changeTargets(n.document, next)
+      }
+    }
+    pending = next
+  }
+  return variants
+}
+
 export function buildIR(raw: RawSnapshot, pages: ImportPlan['pages'], fileKey: string): IRDocument {
   const styles = {}, components = {}, componentSets = {}
-  for (const n of Object.values(raw.nodes)) { Object.assign(styles, n?.styles); Object.assign(components, n?.components); Object.assign(componentSets, n?.componentSets) }
+  const all = [...Object.values(raw.nodes), ...Object.values(raw.variants ?? {})]
+  for (const n of all) { Object.assign(styles, n?.styles); Object.assign(components, n?.components); Object.assign(componentSets, n?.componentSets) }
   const ctx = newContext(styles, components, componentSets)
+  // Variants may also live inside the selected frames (e.g. a component placed on the page).
+  const byId = new Map<string, FigmaNode>()
+  const index = (n: FigmaNode) => { byId.set(n.id, n); n.children?.forEach(index) }
+  for (const n of all) if (n) index(n.document)
+  const variants: Record<string, IRNode> = {}
+  const targets = new Set<string>()
+  for (const n of all) if (n) changeTargets(n.document, targets)
+  const vctx = newContext(styles, components, componentSets) // variant layout warnings aren't actionable; fonts are kept
+  for (const id of targets) {
+    const node = byId.get(id)
+    const ir = node && normalizeNode(node, vctx, null, 1)
+    if (ir) variants[id] = ir
+  }
+  for (const [family, f] of vctx.fonts) {
+    const cur = ctx.fonts.get(family) ?? { weights: new Set<number>(), italic: false }
+    f.weights.forEach((w) => cur.weights.add(w)); cur.italic ||= f.italic
+    ctx.fonts.set(family, cur)
+  }
   const irPages = pages.map((p) => ({
-    title: p.title, type: p.type, ...(p.slug ? { slug: p.slug } : {}),
+    title: p.title, type: p.type, ...(p.slug ? { slug: p.slug } : {}), ...(p.layout ? { layout: p.layout } : {}),
     frames: (['desktop', 'tablet', 'mobile'] as const).flatMap((device) => {
       const id = p.frames[device]
       const doc = id ? raw.nodes[id]?.document : undefined
-      const root = doc ? normalizeNode(doc, ctx) : null
+      // A frame selected for import is imported even if it is hidden in Figma.
+      const root = doc ? normalizeNode({ ...doc, visible: true }, ctx) : null
       return root ? [{ nodeId: id!, name: doc!.name, device, root }] : []
     }),
   }))
@@ -91,7 +144,7 @@ export function buildIR(raw: RawSnapshot, pages: ImportPlan['pages'], fileKey: s
     if (page) w.pageTitle = page.title
   }
   return {
-    fileKey, version: raw.file.version, pages: irPages, warnings: ctx.warnings,
+    fileKey, version: raw.file.version, pages: irPages, warnings: ctx.warnings, ...(Object.keys(variants).length ? { variants } : {}),
     fonts: [...ctx.fonts.entries()].map(([family, f]) => ({ family, weights: [...f.weights].sort((a, b) => a - b), italic: f.italic })),
   }
 }
@@ -132,7 +185,7 @@ async function mappingStage(ctx: Ctx, job: Job, ir: () => Promise<IRDocument>) {
   if (resultOf(job).pages) return
   await advance(ctx, job, { status: 'MAPPING' })
   const doc = await ir()
-  const mctx = { saved: await savedMappings(ctx, job.file.fileKey), framePages: framePages(plan(job)) }
+  const mctx = { saved: await savedMappings(ctx, job.file.fileKey), framePages: framePages(plan(job)), variants: doc.variants }
   const pages = doc.pages.filter((p) => p.frames.length).map((p) => mapPage(p, job.file.fileKey, mctx))
   const warnings = [...(job.warnings as IRWarning[]), ...pages.flatMap((p) => p.warnings)]
   await advance(ctx, job, { result: { ...resultOf(job), pages }, warnings, stats: { ...(job.stats as object), sections: pages.reduce((n, p) => n + p.sections.length, 0) } })
@@ -153,7 +206,7 @@ export function pendingRefs(pages: MappedPage[]) {
       if (n.kind === 'vector') refs.add(`svg:${n.id}`)
       for (const p of n.fills) if (p.type === 'image') refs.add(`img:${p.imageRef}`)
     }
-    for (const [k, x] of Object.entries(o)) visit(x, inTree || k === 'tree')
+    for (const [k, x] of Object.entries(o)) visit(x, inTree || IR_KEYS.has(k))
   }
   for (const p of pages) visit(p.sections)
   return [...refs]
@@ -176,7 +229,7 @@ export function resolveRefs(pages: MappedPage[], assets: Record<string, StoredAs
       if (n.kind === 'vector') o.vector = { assetUrl: assets[`svg:${n.id}`]?.url }
       o.fills = n.fills.map((p) => (p.type === 'image' ? { ...p, assetUrl: assets[`img:${p.imageRef}`]?.url } : p))
     }
-    for (const [k, x] of Object.entries(o)) if (!irNode || (k !== 'fills' && k !== 'image' && k !== 'vector')) o[k] = visit(x, inTree || k === 'tree')
+    for (const [k, x] of Object.entries(o)) if (!irNode || (k !== 'fills' && k !== 'image' && k !== 'vector')) o[k] = visit(x, inTree || IR_KEYS.has(k))
     return o
   }
   return pages.map((p) => ({ ...p, sections: visit(p.sections) as MappedPage['sections'] }))
@@ -205,16 +258,36 @@ async function assetsStage(ctx: Ctx, job: Job, auth: FigmaAuth, ir: () => Promis
   const imageRefs = refs.filter((r) => r.startsWith('img:') && !assets[r]).map((r) => r.slice(4))
   const svgIds = refs.filter((r) => r.startsWith('svg:') && !assets[r]).map((r) => r.slice(4))
   const urls: Record<string, string> = {}
+  // A rate limit lasting hours or days (low-limit Figma seats) doesn't hold the whole import: the affected images
+  // are reported, and rebuilding the pages in review later copies only what is still missing.
+  let limited: FigmaApiError | null = null
+  const unlessLimited = async <T,>(request: () => Promise<T>) => {
+    if (limited) return null
+    try { return await request() } catch (error) {
+      if (error instanceof FigmaApiError && error.status === 429 && (error.retryAfterMs ?? 0) > LONG_RATE_LIMIT_MS) { limited = error; return null }
+      throw error
+    }
+  }
   if (imageRefs.length) {
-    const fills = await figmaRequest<{ meta?: { images?: Record<string, string> } }>(`/v1/files/${key}/images`, auth)
-    for (const ref of imageRefs) if (fills.meta?.images?.[ref]) urls[`img:${ref}`] = fills.meta.images[ref]
+    const fills = await unlessLimited(() => figmaRequest<{ meta?: { images?: Record<string, string> } }>(`/v1/files/${key}/images`, auth))
+    for (const ref of imageRefs) if (fills?.meta?.images?.[ref]) urls[`img:${ref}`] = fills.meta.images[ref]
   }
   for (let i = 0; i < svgIds.length; i += 50) {
     const ids = svgIds.slice(i, i + 50)
-    const res = await figmaRequest<{ images: Record<string, string | null> }>(`/v1/images/${key}?ids=${encodeURIComponent(ids.join(','))}&format=svg&svg_outline_text=true`, auth)
-    for (const id of ids) if (res.images?.[id]) urls[`svg:${id}`] = res.images[id]!
+    const res = await unlessLimited(() => figmaRequest<{ images: Record<string, string | null> }>(`/v1/images/${key}?ids=${encodeURIComponent(ids.join(','))}&format=svg&svg_outline_text=true&version=${encodeURIComponent(job.figmaVersion)}`, auth))
+    for (const id of ids) if (res?.images?.[id]) urls[`svg:${id}`] = res.images[id]!
+  }
+  if (limited) {
+    const missing = [...imageRefs.map((r) => `img:${r}`), ...svgIds.map((r) => `svg:${r}`)].filter((r) => !urls[r]).length
+    warnings.push({ code: 'ASSET_FAILED', message: `${missing} image${missing === 1 ? '' : 's'} could not be copied: ${(limited as FigmaApiError).message}. Choose “Rebuild pages” later to copy them, or connect a Figma account with a Full or Dev seat.` })
+  }
+  let lastCheckpoint = 0
+  const checkpoint = async (frameRenders = result.frameRenders) => {
+    await advance(ctx, job, { result: { ...result, assets: { ...assets }, ...(frameRenders ? { frameRenders: { ...frameRenders } } : {}) }, warnings: [...warnings], stats: { ...(job.stats as object), assets: Object.keys(assets).length } })
+    lastCheckpoint = Date.now()
   }
   for (const ref of [...imageRefs.map((r) => `img:${r}`), ...svgIds.map((r) => `svg:${r}`)]) {
+    if (limited && !urls[ref]) continue
     try {
       if (!urls[ref]) throw new AssetError('Figma returned no download URL')
       const { data } = await safeFetch(urls[ref], FIGMA_ASSET_HOSTS)
@@ -223,22 +296,28 @@ async function assetsStage(ctx: Ctx, job: Job, auth: FigmaAuth, ir: () => Promis
       log('warn', 'design asset failed', { importId: job.id, ref, error })
       warnings.push({ code: 'ASSET_FAILED', message: `An image (${ref}) could not be copied from Figma: ${error instanceof Error ? error.message : 'unknown error'}. Choose a replacement in review.` })
     }
+    // Persist partial work and renew the lease during long imports, not only after all assets finish.
+    if (Date.now() - lastCheckpoint >= 30_000) await checkpoint()
   }
+  await checkpoint()
 
   // Frame renders: shown next to the live preview in review and used as default social images.
   const frameRenders: Record<string, string> = { ...(result.frameRenders ?? {}) }
   const frames = job.selectedNodeIds.filter((id) => !frameRenders[id])
   for (let i = 0; i < frames.length; i += 10) {
     const ids = frames.slice(i, i + 10)
-    const res = await figmaRequest<{ images: Record<string, string | null> }>(`/v1/images/${key}?ids=${encodeURIComponent(ids.join(','))}&format=png&scale=1`, auth).catch(() => ({ images: {} as Record<string, string | null> }))
+    const res = await figmaRequest<{ images: Record<string, string | null> }>(`/v1/images/${key}?ids=${encodeURIComponent(ids.join(','))}&format=png&scale=1&version=${encodeURIComponent(job.figmaVersion)}`, auth).catch(() => ({ images: {} as Record<string, string | null> }))
     for (const id of ids) {
       if (!res.images?.[id]) continue
       try {
         const { data } = await safeFetch(res.images[id]!, FIGMA_ASSET_HOSTS)
         frameRenders[id] = (await storeAsset(ctx, await processImage(data), { sourceNodeId: id, alt: '' })).url
       } catch (error) { log('warn', 'frame render failed', { importId: job.id, id, error }) }
+      if (Date.now() - lastCheckpoint >= 30_000) await checkpoint(frameRenders)
     }
   }
+
+  await checkpoint(frameRenders)
 
   // Google fonts are self-hosted; others were flagged MISSING_FONT by the tokens stage.
   for (const font of (await ir()).fonts) {
@@ -255,7 +334,7 @@ async function assetsStage(ctx: Ctx, job: Job, auth: FigmaAuth, ir: () => Promis
       if (!v || typeof v !== 'object') return
       const o = v as Record<string, unknown>
       if (typeof o.url === 'string' && typeof o.alt === 'string' && 'decorative' in o && !o.alt && !o.decorative) warnings.push({ code: 'MISSING_ALT', pageTitle: page.title, message: `An image on “${page.title}” has no alt text.` })
-      Object.entries(o).forEach(([k, x]) => k !== 'tree' && visit(x))
+      Object.entries(o).forEach(([k, x]) => !IR_KEYS.has(k) && visit(x))
     }
     visit(page.sections)
   }

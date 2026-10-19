@@ -1,7 +1,7 @@
 // Figma node JSON → IR (src/shared/design-ir.ts). Pure: no I/O.
 // Field names follow https://developers.figma.com/docs/rest-api/file-node-types/ and /file-property-types/.
 import type {
-  IRColor, IRLayout, IRLink, IRNode, IRPaint, IRShadow, IRTextMarks, IRTextRun, IRTextStyle, IRWarning, SizeMode,
+  IRColor, IRInteraction, IRLayout, IRLink, IRNode, IRPaint, IRShadow, IRTextMarks, IRTextRun, IRTextStyle, IRTransition, IRWarning, SizeMode,
 } from '@/shared/design-ir'
 
 export type FigmaNode = Record<string, any> & { id: string; name: string; type: string; children?: FigmaNode[] }
@@ -47,7 +47,11 @@ function shadows(effects: any[] | undefined): { shadows: IRShadow[]; blur?: IRNo
     if (e?.visible === false) continue
     if (e.type === 'DROP_SHADOW' || e.type === 'INNER_SHADOW') {
       out.push({ inset: e.type === 'INNER_SHADOW', x: e.offset?.x ?? 0, y: e.offset?.y ?? 0, blur: e.radius ?? 0, spread: e.spread ?? 0, color: color(e.color) })
-    } else if (e.type === 'LAYER_BLUR' || e.type === 'BACKGROUND_BLUR') blur = { type: e.type === 'LAYER_BLUR' ? 'layer' : 'background', radius: e.radius ?? 0 }
+    } else if (e.type === 'LAYER_BLUR' || e.type === 'BACKGROUND_BLUR') {
+      // Progressive blur (startRadius → radius across the layer) is approximated by its average.
+      const radius = e.blurType === 'PROGRESSIVE' && typeof e.startRadius === 'number' ? (e.startRadius + (e.radius ?? 0)) / 2 : e.radius ?? 0
+      blur = { type: e.type === 'LAYER_BLUR' ? 'layer' : 'background', radius }
+    }
   }
   return { shadows: out, ...(blur ? { blur } : {}) }
 }
@@ -102,6 +106,77 @@ function nodeLink(n: FigmaNode): IRLink | undefined {
   if (n.transitionNodeID) return { kind: 'node', nodeId: n.transitionNodeID }
   return undefined
 }
+
+// ---------------------------------------------------------------- prototype motion
+// Easing presets: https://developers.figma.com/docs/plugins/api/Transition/ (cubic-bezier values and spring presets).
+const CUBIC: Record<string, [number, number, number, number]> = {
+  EASE_IN: [0.42, 0, 1, 1], EASE_OUT: [0, 0, 0.58, 1], EASE_IN_AND_OUT: [0.42, 0, 0.58, 1],
+  EASE_IN_BACK: [0.3, -0.05, 0.7, -0.5], EASE_OUT_BACK: [0.45, 1.45, 0.8, 1], EASE_IN_AND_OUT_BACK: [0.7, -0.4, 0.4, 1.4],
+}
+const SPRINGS: Record<string, { mass: number; stiffness: number; damping: number }> = {
+  GENTLE: { mass: 1, stiffness: 100, damping: 15 }, QUICK: { mass: 1, stiffness: 300, damping: 20 },
+  BOUNCY: { mass: 1, stiffness: 600, damping: 15 }, SLOW: { mass: 1, stiffness: 80, damping: 20 },
+}
+const r3 = (v: number) => +v.toFixed(3)
+
+/** A damped spring from 0 to 1 sampled over `durationMs` into a CSS linear() easing. */
+export function springEasing({ mass, stiffness, damping }: { mass: number; stiffness: number; damping: number }, durationMs: number) {
+  const steps = 40, dt = durationMs / 1000 / steps / 20
+  let x = 0, v = 0
+  const points = ['0']
+  for (let i = 1; i <= steps; i++) {
+    for (let j = 0; j < 20; j++) { const a = (-stiffness * (x - 1) - damping * v) / Math.max(mass, 0.01); v += a * dt; x += v * dt }
+    points.push(String(i === steps ? 1 : r3(x)))
+  }
+  return `linear(${points.join(', ')})`
+}
+
+export function easing(e: any, durationMs: number): string {
+  const type = e?.type ?? 'LINEAR'
+  if (type === 'LINEAR') return 'linear'
+  if (type === 'CUSTOM_CUBIC_BEZIER' && e.easingFunctionCubicBezier) {
+    const b = e.easingFunctionCubicBezier
+    return `cubic-bezier(${[b.x1, b.y1, b.x2, b.y2].map((v: unknown) => r3(Number(v) || 0)).join(', ')})`
+  }
+  if (CUBIC[type]) return `cubic-bezier(${CUBIC[type].join(', ')})`
+  const spring = type === 'CUSTOM_SPRING' ? e.easingFunctionSpring : SPRINGS[type]
+  if (spring) return springEasing({ mass: Number(spring.mass) || 1, stiffness: Number(spring.stiffness) || 100, damping: Number(spring.damping) || 10 }, durationMs)
+  return 'ease'
+}
+
+function transition(t: any): IRTransition {
+  if (!t) return { type: 'instant', duration: 0, easing: 'linear' }
+  const duration = Math.min(20_000, Math.max(0, Math.round((Number(t.duration) || 0) * 1000)))
+  const type = t.type === 'SMART_ANIMATE' ? 'smart' : duration ? 'dissolve' : 'instant'
+  return { type, duration, easing: easing(t.easing, duration) }
+}
+
+const TRIGGERS: Record<string, IRInteraction['trigger']> = {
+  ON_HOVER: 'hover', ON_CLICK: 'click', ON_PRESS: 'press', ON_DRAG: 'drag', MOUSE_ENTER: 'mouse-enter', MOUSE_LEAVE: 'mouse-leave', AFTER_TIMEOUT: 'timeout',
+}
+
+/** "Change to" interactions (variant swaps): hover states, drag/click carousels, timed loops. */
+function interactions(n: FigmaNode): IRInteraction[] {
+  const out: IRInteraction[] = []
+  for (const i of n.interactions ?? []) {
+    const trigger = TRIGGERS[i?.trigger?.type]
+    if (!trigger) continue
+    for (const a of i.actions ?? []) {
+      if (a?.type !== 'NODE' || a.navigation !== 'CHANGE_TO' || typeof a.destinationId !== 'string') continue
+      out.push({ trigger, delay: Math.round((Number(i.trigger.timeout) || 0) * 1000), to: a.destinationId, transition: transition(a.transition) })
+    }
+  }
+  return out
+}
+
+/** Destination node ids of "Change to" interactions anywhere in a raw Figma subtree. */
+export function changeTargets(n: FigmaNode, out = new Set<string>()): Set<string> {
+  for (const i of n.interactions ?? []) for (const a of i?.actions ?? []) if (a?.type === 'NODE' && a.navigation === 'CHANGE_TO' && typeof a.destinationId === 'string') out.add(a.destinationId)
+  for (const c of n.children ?? []) changeTargets(c, out)
+  return out
+}
+
+const SCROLL: Record<string, IRNode['scroll']> = { HORIZONTAL_SCROLLING: 'horizontal', VERTICAL_SCROLLING: 'vertical', BOTH_SCROLLING: 'both' }
 
 function hyperlink(h: any): IRLink | undefined {
   if (h?.type === 'URL' && h.url) return { kind: 'url', url: h.url, newTab: false }
@@ -181,7 +256,8 @@ function componentInfo(n: FigmaNode, ctx: NormalizeContext): IRNode['component']
     if (prop?.type === 'VARIANT') variant[key.replace(/#.*$/, '')] = String(prop.value)
   }
   const name = set?.name ?? comp?.name ?? n.name
-  if (!comp && !set && !Object.keys(variant).length) return undefined
+  const overrides = (n.overrides ?? []).filter((o: any) => typeof o?.id === 'string' && (o.overriddenFields ?? []).some((f: string) => f === 'characters' || f === 'fills')).map((o: any) => o.id as string)
+  if (!comp && !set && !Object.keys(variant).length && !overrides.length) return undefined
   // "Button/Primary" or set "Button" with variant Type=Primary → <Button variant="primary">.
   const segments = name.split('/').map((s: string) => s.trim())
   let primitive: NonNullable<IRNode['component']>['primitive']
@@ -189,12 +265,18 @@ function componentInfo(n: FigmaNode, ctx: NormalizeContext): IRNode['component']
     const v = variant.Variant ?? variant.Type ?? variant.Style ?? variant.Kind ?? segments[1] ?? comp?.name.split('/')[1] ?? 'primary'
     primitive = { type: 'button', variant: v.split('=').pop()!.trim().toLowerCase().replace(/\s+/g, '-') }
   }
-  return { name, variant, ...(primitive ? { primitive } : {}) }
+  return { name, variant, ...(primitive ? { primitive } : {}), ...(overrides.length ? { overrides } : {}) }
 }
 
+/** A large frame with its own background or effects stays a frame (CSS fills, blur) even if its layers are vectors. */
+const ownsBackground = (n: FigmaNode) => {
+  const box = n.absoluteBoundingBox ?? { width: 0, height: 0 }
+  const visible = (list: any[] | undefined) => (list ?? []).some((x: any) => x?.visible !== false)
+  return (box.width > 160 || box.height > 160) && (visible(n.fills) || visible(n.effects))
+}
 const isVectorOnly = (n: FigmaNode): boolean =>
   VECTOR_TYPES.has(n.type) || (n.type === 'ELLIPSE' && !(n.fills ?? []).some((f: any) => f.type === 'IMAGE'))
-  || ((n.type === 'GROUP' || n.type === 'FRAME' || n.type === 'INSTANCE' || n.type === 'COMPONENT') && !!n.children?.length && n.children.every(isVectorOnly))
+  || ((n.type === 'GROUP' || n.type === 'FRAME' || n.type === 'INSTANCE' || n.type === 'COMPONENT') && !!n.children?.length && !ownsBackground(n) && n.children.every(isVectorOnly))
 
 export function normalizeNode(n: FigmaNode, ctx: NormalizeContext, parent: FigmaNode | null = null, depth = 0): IRNode | null {
   if (n.visible === false) return null
@@ -222,6 +304,10 @@ export function normalizeNode(n: FigmaNode, ctx: NormalizeContext, parent: Figma
   }
   const l = nodeLink(n)
   if (l) base.link = l
+  if (n.scrollBehavior === 'FIXED') base.position = 'fixed'
+  else if (n.scrollBehavior === 'STICKY_SCROLLS') base.position = 'sticky'
+  const motion = interactions(n)
+  if (motion.length) base.interactions = motion
 
   if (n.type === 'TEXT') {
     const style = textStyle(n.style, n.fills, styleName(n, 'text', ctx))
@@ -236,7 +322,7 @@ export function normalizeNode(n: FigmaNode, ctx: NormalizeContext, parent: Figma
   }
   if (!CONTAINER_TYPES.has(n.type) && n.type !== 'RECTANGLE' && n.type !== 'ELLIPSE') return null
 
-  const node: IRNode = { ...base, layout: layout(n) }
+  const node: IRNode = { ...base, layout: layout(n), ...(SCROLL[n.overflowDirection] ? { scroll: SCROLL[n.overflowDirection] } : {}) }
   if (n.type === 'INSTANCE') { const c = componentInfo(n, ctx); if (c) node.component = c }
   for (const child of n.children ?? []) {
     const c = normalizeNode(child, ctx, n, depth + 1)

@@ -9,7 +9,7 @@ import { Button } from '@/frontend/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/frontend/components/ui/card'
 import { Input } from '@/frontend/components/ui/input'
 import { Label } from '@/frontend/components/ui/label'
-import { DEVICES, PAGE_TYPE_LABELS, PAGE_TYPES, frameDevice, importPlanSchema, pairFrames, type Device, type PageType, type PlanPage } from '@/shared/design-plan'
+import { DEVICES, PAGE_LAYOUTS, PAGE_LAYOUT_LABELS, PAGE_TYPE_LABELS, PAGE_TYPES, defaultLayout, frameDevice, importPlanSchema, pairFrames, type Device, type PageLayout, type PageType, type PlanPage } from '@/shared/design-plan'
 import { FigmaLinkError, parseFigmaLink } from '@/shared/figma-url'
 import { slugify } from '@/shared/slug'
 import { adminApi, errorMessage } from './admin-api'
@@ -144,7 +144,7 @@ export function DesignImportSection() {
           ))}</ul></CardContent>
         </Card>
       )}
-      {!reviewing && file && <FilePicker key={`${file.fileKey}:${file.branchKey}`} file={file} startNodeId={startNodeId} onClose={() => setFile(null)} onQueued={loadImports} />}
+      {!reviewing && file && <FilePicker key={`${file.fileKey}:${file.branchKey}:${startNodeId}`} file={file} startNodeId={startNodeId} onClose={() => setFile(null)} onQueued={(id) => { setReviewing(id); loadImports() }} />}
 
       <Card>
         <CardHeader><CardTitle className="text-base">Imports</CardTitle><CardDescription>Queued imports are processed in the background; nothing is published automatically.</CardDescription></CardHeader>
@@ -176,14 +176,15 @@ function selected0(startNodeId: string | null, frames: Map<string, Frame>) {
   return frame ? [frame] : []
 }
 
-function FilePicker({ file, startNodeId, onClose, onQueued }: { file: FileStructure; startNodeId: string | null; onClose: () => void; onQueued: () => void }) {
+function FilePicker({ file, startNodeId, onClose, onQueued }: { file: FileStructure; startNodeId: string | null; onClose: () => void; onQueued: (id: string) => void }) {
   const allFrames = useMemo(() => new Map(file.pages.flatMap((p) => p.frames.map((f) => [f.id, f] as const))), [file])
   const initialPage = file.pages.find((p) => p.frames.some((f) => f.id === startNodeId)) ?? file.pages.find((p) => p.frames.length) ?? file.pages[0]
   const [pageId, setPageId] = useState(initialPage?.id)
   const [selected, setSelected] = useState<string[]>(() => selected0(startNodeId, allFrames).map((f) => f.id))
-  const [plan, setPlan] = useState<PlanPage[]>(() => pairFrames(selected0(startNodeId, allFrames)))
+  const [plan, setPlan] = useState<PlanPage[]>(() => pairFrames(selected0(startNodeId, allFrames), startNodeId))
   const [thumbs, setThumbs] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState<string | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const page = file.pages.find((p) => p.id === pageId)
 
   // Thumbnails for the visible page, 50 frames per request.
@@ -200,7 +201,7 @@ function FilePicker({ file, startNodeId, onClose, onQueued }: { file: FileStruct
   // Changing the selection re-runs the automatic pairing; edits below adjust the result.
   const select = (next: string[]) => {
     setSelected(next)
-    setPlan(pairFrames(next.map((id) => allFrames.get(id)).filter((f): f is Frame => !!f)))
+    setPlan(pairFrames(next.map((id) => allFrames.get(id)).filter((f): f is Frame => !!f), startNodeId))
   }
   const toggle = (id: string) => select(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
 
@@ -219,15 +220,15 @@ function FilePicker({ file, startNodeId, onClose, onQueued }: { file: FileStruct
     if (j === i) { if (frameId) frames[device] = frameId; else delete frames[device] }
     return { ...row, frames }
   }))
-  const setType = (i: number, type: PageType) => updatePage(i, { type, slug: type === 'PAGE' ? plan[i].slug ?? (slugify(plan[i].title) || 'page') : undefined })
+  const setType = (i: number, type: PageType) => updatePage(i, { type, layout: defaultLayout(type), slug: type === 'PAGE' ? plan[i].slug ?? (slugify(plan[i].title) || 'page') : undefined })
 
   const submit = () => {
     const body = { fileKey: file.fileKey, branchKey: file.branchKey, pages: plan.filter((p) => Object.keys(p.frames).length) }
     const parsed = importPlanSchema.safeParse(body)
     if (!parsed.success) { toast.error(parsed.error.issues[0]?.message ?? 'Check the page list'); return }
     setBusy('submit')
-    adminApi.post('/api/design/imports', parsed.data)
-      .then(() => { toast.success('Import queued'); select([]); onQueued() })
+    adminApi.post<{ id: string }>('/api/design/imports', parsed.data)
+      .then(({ id }) => { toast.success('Import queued'); select([]); onQueued(id) })
       .catch((e) => toast.error(errorMessage(e)))
       .finally(() => setBusy(null))
   }
@@ -244,6 +245,11 @@ function FilePicker({ file, startNodeId, onClose, onQueued }: { file: FileStruct
           <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" disabled={!!busy || !page?.frames.length} onClick={() => select([...new Set([...selected, ...(page?.frames ?? []).map((f) => f.id)])])}>Select this page</Button>
+            <Button size="sm" variant="ghost" disabled={!!busy || !selected.length} onClick={() => select([])}>Clear selection</Button>
+            <span className="text-xs text-muted-foreground">Choose the frames you want to turn into pages.</span>
+          </div>
           {(flows.length > 0 || startNodeId) && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-muted-foreground">Prototype flows:</span>
@@ -291,17 +297,35 @@ function FilePicker({ file, startNodeId, onClose, onQueued }: { file: FileStruct
       {plan.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Pages to create ({plan.length})</CardTitle>
-            <CardDescription>Frames with the same name (e.g. “Home / Desktop” and “Home / Mobile”) or the same name at different widths are paired automatically. Adjust anything below.</CardDescription>
+          <CardTitle className="text-base">Pages to create ({plan.length})</CardTitle>
+            <CardDescription>Matching desktop, tablet and mobile frames are grouped as one page. Repeated frames without device labels become separate pages.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {plan.map((row, i) => (
-              <div key={i} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1.2fr_1fr_1fr_2fr_auto] lg:items-end">
+              <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+                <span className="min-w-36 flex-1 font-medium">{row.title}</span>
+                <select aria-label={`Page type for ${row.title}`} value={row.type} onChange={(e) => setType(i, e.target.value as PageType)} className="h-9 rounded-md border bg-background px-2 text-sm">
+                  {PAGE_TYPES.map((t) => <option key={t} value={t}>{PAGE_TYPE_LABELS[t]}</option>)}
+                </select>
+                <span className="text-xs text-muted-foreground">{DEVICES.filter((d) => row.frames[d]).map((d) => d).join(', ')}</span>
+                <Button size="sm" variant="ghost" aria-label={`Remove ${row.title}`} onClick={() => setPlan((p) => p.filter((_, j) => j !== i))}>Remove</Button>
+              </div>
+            ))}
+            <Button type="button" size="sm" variant="ghost" onClick={() => setShowAdvanced((v) => !v)}>{showAdvanced ? 'Hide page settings' : 'Edit page names and types'}</Button>
+            {showAdvanced && <>
+            {plan.map((row, i) => (
+              <div key={i} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_2fr_auto] lg:items-end">
                 <div className="space-y-1"><Label className="text-xs">Title</Label><Input value={row.title} onChange={(e) => updatePage(i, { title: e.target.value })} /></div>
                 <div className="space-y-1">
                   <Label className="text-xs">Page type</Label>
                   <select value={row.type} onChange={(e) => setType(i, e.target.value as PageType)} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
                     {PAGE_TYPES.map((t) => <option key={t} value={t}>{PAGE_TYPE_LABELS[t]}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs" title="Exact keeps every position, scrolling area, fixed layer and prototype animation from Figma. Editable sections convert the frame into template sections.">Layout</Label>
+                  <select aria-label="Layout" value={row.layout ?? defaultLayout(row.type)} onChange={(e) => updatePage(i, { layout: e.target.value as PageLayout })} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+                    {PAGE_LAYOUTS.map((l) => <option key={l} value={l}>{PAGE_LAYOUT_LABELS[l]}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -322,11 +346,12 @@ function FilePicker({ file, startNodeId, onClose, onQueued }: { file: FileStruct
                 <Button variant="ghost" size="icon" aria-label="Remove page" onClick={() => setPlan((p) => p.filter((_, j) => j !== i))}><Trash2 className="size-4" /></Button>
               </div>
             ))}
+            </>}
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPlan((p) => [...p, { title: 'New page', type: 'PAGE', slug: `page-${p.length + 1}`, frames: {} }])}><Plus className="size-4" /> Add page</Button>
+              <span className="text-xs text-muted-foreground">To add a page, select its frame above.</span>
               <Badge variant="outline">{selected.length} frame{selected.length === 1 ? '' : 's'} selected</Badge>
               <Button onClick={submit} disabled={!!busy} className="ml-auto bg-brand-teal hover:bg-brand-teal-dark">
-                {busy === 'submit' ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />} Queue import
+                {busy === 'submit' ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />} Import {plan.length} page{plan.length === 1 ? '' : 's'}
               </Button>
             </div>
           </CardContent>

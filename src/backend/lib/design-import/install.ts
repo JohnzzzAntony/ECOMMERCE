@@ -6,6 +6,7 @@ import { cleanSections, nextVersionNumber } from '@/backend/lib/store-pages'
 import { designTokensSchema, type DesignTokens } from '@/shared/design-tokens'
 import { slugFor, type StorePageType } from '@/shared/store-pages'
 import type { SectionInstance } from '@/shared/sections/registry'
+import { IR_KEYS } from '@/shared/design-ir'
 import type { ImportResult } from './pipeline'
 import type { MappedPage } from './mapping'
 import { applyDecisions, diffSections, diffTokens, type Decision } from './diff'
@@ -18,7 +19,7 @@ function dropPending(value: unknown): unknown {
   if (!value || typeof value !== 'object') return value
   const o = value as Record<string, unknown>
   if (typeof o.url === 'string' && o.url.startsWith('pending:')) return null
-  return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, k === 'tree' ? v : dropPending(v)]))
+  return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, IR_KEYS.has(k) ? v : dropPending(v)]))
 }
 
 export const pageSlug = (p: MappedPage) => slugFor(p.type as StorePageType, p.slug)

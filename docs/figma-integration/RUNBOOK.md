@@ -26,10 +26,16 @@ Logs are JSON lines (`src/backend/lib/log.ts`) with tokens, codes and passcodes 
 | `Frames no longer exist in the Figma file` | Frames deleted/renamed in Figma after selection | Start a new import |
 | `Figma is rate limiting requests` / repeated `figma request retry` | Plan's Tier‑1 limit (10–20/min) | Wait; the job retries with backoff. Large imports: select fewer frames per import |
 | `Retrying: …` | Transient error | Nothing; retries up to 5 times (30 s → 15 min backoff) |
+| `Waiting: Figma rate limit reached; retry in N min` | Figma answered 429 with a long `Retry-After` (low-limit View/Collab seats get hours or days) while downloading the file | The job resumes by itself after that time. To import now, connect an account with a Full or Dev seat |
+| `ASSET_FAILED … could not be copied: Figma rate limit reached` | Same, while copying images/icons: the import still reaches review | Later, *Rebuild pages* copies the missing images |
 
-3. **Retry** a failed import from the review screen (`POST /api/design/imports/:id/retry`). Finished stages are
+3. **Rebuild pages** (review → *Pages and layout*): re-pairs frames per device, changes page types or the layout
+   (exact / editable sections). It re-runs normalize → mapping → assets from the stored snapshot (`POST
+   /api/design/imports/:id/plan`) without downloading the file again; only images not yet copied are fetched.
+   Section changes made in review are reset.
+4. **Retry** a failed import from the review screen (`POST /api/design/imports/:id/retry`). Finished stages are
    skipped: it resumes from the first missing output.
-4. Stuck in a running state for > 10 minutes with no worker logs: ensure the web server is receiving traffic or run
+5. Stuck in a running state for > 10 minutes with no worker logs: ensure the web server is receiving traffic or run
    `bun run design:worker`. To force a re-claim: `UPDATE "DesignImport" SET "lockedAt" = NULL WHERE id = '…'` (run
    with `SET app.bypass_rls = 'on'` or as the table owner).
 
@@ -78,3 +84,19 @@ Logs are JSON lines (`src/backend/lib/log.ts`) with tokens, codes and passcodes 
 `bun run test-db` starts a throwaway PostgreSQL (`.test-db/`), applies migrations and keeps running; then
 `TEST_DATABASE_URL=postgresql://app:app@127.0.0.1:54329/nexecoms_test bun run test:db`, and for E2E also
 `TEST_DATABASE_ADMIN_URL=postgresql://postgres:postgres@127.0.0.1:54329/nexecoms_test bun run test:e2e`.
+
+## Token and link workflow
+
+1. Admin → Figma: save a personal access token with `current_user:read`, `file_content:read`, and `file_metadata:read`.
+2. Admin → Import design: paste the file or prototype link and open it. Select individual frames, all frames on a page, all file frames, or a prototype flow.
+3. Check the automatically paired device frames and page types. Home/content/global pages default to **Exact Figma design**; commerce templates default to live editable sections. Choose the home page explicitly if the frame names do not identify one.
+4. Queue import opens progress and review automatically. Inspect desktop/mobile previews and warnings, then install drafts.
+5. Store pages: edit text, images (including SVG/vector replacements), links, and commerce settings; resolve the publishing checklist and publish. The store must use the FIGMA design source and have a published home page to switch the storefront.
+
+New imports through the API receive the same layout defaults as the picker. Existing saved imports retain their chosen layout. Frame data, component variants, SVG exports and review renders use the captured Figma version, so later edits cannot mix those parts of the import. Figma's image-fill endpoint supplies fresh URLs for the image references from that snapshot.
+
+Prototype navigation between imported page frames is converted to storefront links, including links in mobile/tablet trees and component variants. A destination frame must be included in the import; product/collection destinations still need a real catalog item selected in the editor.
+
+This imports into the existing page renderer and backend. It does not infer new business logic from a visual mockup. Missing assets, unavailable fonts, unsupported prototype behavior, and catalog bindings must be reviewed before publishing. Cloudinary, token encryption, database migrations and the worker remain deployment prerequisites described above.
+
+Figma version parameters: https://developers.figma.com/docs/rest-api/file-endpoints/

@@ -13,6 +13,8 @@ export type SectionProps = {
   page: Pick<RenderedPage, 'route' | 'currency' | 'store'>
   /** True for the first visible section: its image is the likely LCP element. */
   priority: boolean
+  /** Rendered in the admin editor preview: sections mark their editable parts for click-to-select. */
+  editing?: boolean
 }
 
 type S = Record<string, unknown>

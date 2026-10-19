@@ -1,7 +1,7 @@
 'use client'
 // Review & install (Phase 8): progress, Figma render next to the live preview, sections with confidence, type and
 // layer remapping, warnings, install. Re-sync imports show the diff with per-section accept/reject (Phase 11).
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, CheckCircle2, Download, Loader2, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/frontend/components/ui/badge'
@@ -9,14 +9,38 @@ import { Button } from '@/frontend/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/frontend/components/ui/card'
 import { SECTIONS, SECTION_TYPES, type SectionInstance, type SectionType } from '@/shared/sections/registry'
 import type { IRWarning } from '@/shared/design-ir'
+import { DEVICES, PAGE_LAYOUTS, PAGE_LAYOUT_LABELS, PAGE_TYPES, PAGE_TYPE_LABELS, defaultLayout, importPlanSchema, type PageLayout, type PlanPage } from '@/shared/design-plan'
+import { slugify } from '@/shared/slug'
 import { adminApi, errorMessage } from '../admin-api'
 
-type MappedPage = { title: string; type: string; slug?: string; frames: { device: string; nodeId: string }[]; sections: SectionInstance[] }
+type MappedPage = { title: string; type: string; slug?: string; frames: { device: string; nodeId: string; name?: string }[]; sections: SectionInstance[] }
 type ImportDetail = {
   id: string; kind: 'INSTALL' | 'RESYNC'; status: string; progress: number; error: string | null; attempts: number
-  file: { name: string }; warnings: IRWarning[]; pages: MappedPage[]; frameRenders: Record<string, string>
+  warnings: IRWarning[]; pages: MappedPage[]; frameRenders: Record<string, string>
+  plan: PlanPage[]
+  file: { name: string; fileKey: string; branchKey: string | null }
 }
-const STAGE_LABEL: Record<string, string> = { QUEUED: 'Waiting', FETCHING: 'Fetching from Figma', NORMALIZING: 'Reading layout', TOKENS: 'Extracting design tokens', MAPPING: 'Mapping sections', ASSETS: 'Copying images and fonts', REVIEW: 'Ready for review', INSTALLED: 'Installed', FAILED: 'Failed' }
+const PREVIEW_WIDTHS = { desktop: 1280, tablet: 820, mobile: 390 } as const
+
+/** The preview at the device's real width (so the right Figma frame shows), scaled down to fit the card. */
+function DevicePreview({ src, width, height = 640 }: { src: string; width: number; height?: number }) {
+  const box = useRef<HTMLDivElement>(null)
+  const [available, setAvailable] = useState(width)
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setAvailable(el.clientWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const scale = Math.min(1, available / width)
+  return (
+    <div ref={box} className="overflow-hidden rounded border bg-white" style={{ height }}>
+      <iframe title="Preview" src={src} style={{ width, height: height / scale, transform: `scale(${scale})`, transformOrigin: 'top left' }} className="block border-0" />
+    </div>
+  )
+}
+const STAGE_LABEL: Record<string, string> = { QUEUED: 'Waiting to start', FETCHING: 'Reading selected pages from Figma', NORMALIZING: 'Reading design structure', TOKENS: 'Reading colors and fonts', MAPPING: 'Preparing editable sections', ASSETS: 'Copying images and fonts', REVIEW: 'Ready to preview', INSTALLED: 'Installed as drafts', FAILED: 'Import needs attention' }
 const WARNING_HELP: Record<string, string> = {
   NO_AUTO_LAYOUT: 'Use auto layout in Figma, or change the section type here.', MISSING_FONT: 'Upload the font in Design system → Fonts.',
   MISSING_ALT: 'Add alt text in the page editor after installing.', LOW_CONTRAST: 'Adjust colours in the design system or the section.',
@@ -33,6 +57,7 @@ export function ImportReview({ importId, onBack }: { importId: string; onBack: (
   const [token, setToken] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
+  const [device, setDevice] = useState<keyof typeof PREVIEW_WIDTHS>('desktop')
 
   const load = useCallback(() => adminApi.get<ImportDetail>(`/api/design/imports/${importId}`).then(setJob).catch((e) => toast.error(errorMessage(e))), [importId])
   useEffect(() => { load(); adminApi.get<{ token: string }>(`/api/design/imports/${importId}/preview-token`).then((t) => setToken(t.token)).catch(() => {}) }, [importId, load])
@@ -59,6 +84,7 @@ export function ImportReview({ importId, onBack }: { importId: string; onBack: (
         <Card><CardContent className="space-y-3 pt-6">
           <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={job.progress} aria-valuemin={0} aria-valuemax={100}><div className="h-full bg-brand-teal transition-all" style={{ width: `${job.progress}%` }} /></div>
           <p className="text-sm">{STAGE_LABEL[job.status]}{running && '…'}</p>
+          {running && <p className="text-xs text-muted-foreground">You can leave this screen open. Your selected pages are saved and will appear here when ready.</p>}
           {job.error && <p className="text-sm text-red-700">{job.error}</p>}
           {job.status === 'FAILED' && <Button variant="outline" onClick={async () => { try { await adminApi.post(`/api/design/imports/${importId}/retry`, {}); load() } catch (e) { toast.error(errorMessage(e)) } }}><RotateCcw className="size-4" /> Retry</Button>}
         </CardContent></Card>
@@ -68,7 +94,7 @@ export function ImportReview({ importId, onBack }: { importId: string; onBack: (
   if (job.kind === 'RESYNC') return <div className="space-y-4">{header}<ResyncReview importId={importId} installed={job.status === 'INSTALLED'} onDone={load} /></div>
 
   const page = job.pages[pageIndex]
-  const render = page && job.frameRenders[page.frames.find((f) => f.device === 'desktop')?.nodeId ?? page.frames[0]?.nodeId]
+  const render = page && job.frameRenders[(page.frames.find((f) => f.device === device) ?? page.frames.find((f) => f.device === 'desktop') ?? page.frames[0])?.nodeId]
   const remap = async (section: SectionInstance, change: { type?: SectionType; hidden?: boolean; fieldMap?: Record<string, string> }) => {
     setBusy(true)
     try { await adminApi.patch(`/api/design/imports/${importId}/sections`, { pageIndex, sectionId: section.id, ...change }); await load(); setPreviewKey((k) => k + 1) }
@@ -96,10 +122,25 @@ export function ImportReview({ importId, onBack }: { importId: string; onBack: (
       </div>
       <p className="text-xs text-muted-foreground">Installing creates draft versions of these pages and the design system. Nothing is published until you publish each page.</p>
 
+      {job.status === 'REVIEW' && job.plan?.length > 0 && <PlanEditor job={job} disabled={busy} onSaved={() => { setPageIndex(0); load() }} />}
+
+      <Card className="border-brand-teal/20 bg-brand-teal/5">
+        <CardContent className="space-y-1 pt-5 text-sm">
+          <p className="font-medium">Review the preview, then install as drafts.</p>
+          <p className="text-muted-foreground">Use the page buttons and Desktop / Tablet / Mobile controls to check each screen. After installing, edit the generated sections in Store pages. Nothing goes live until you publish.</p>
+        </CardContent>
+      </Card>
+
       {page && (
         <div className="grid gap-4 xl:grid-cols-2">
           <Card><CardHeader><CardTitle className="text-sm">Figma</CardTitle></CardHeader><CardContent className="max-h-[70vh] overflow-auto">{render ? <img src={render} alt={`Figma design of ${page.title}`} className="w-full" /> : <p className="text-sm text-muted-foreground">No render available.</p>}</CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Preview</CardTitle></CardHeader><CardContent>{token && <iframe key={`${pageIndex}-${previewKey}`} title="Preview" src={`/design-preview/import/${importId}/${pageIndex}?token=${encodeURIComponent(token)}`} className="h-[70vh] w-full rounded border bg-white" />}</CardContent></Card>
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-sm">Preview</CardTitle>
+              <div className="flex gap-1">{(Object.keys(PREVIEW_WIDTHS) as (keyof typeof PREVIEW_WIDTHS)[]).map((d) => <Button key={d} size="sm" variant={d === device ? 'default' : 'outline'} className="h-7 capitalize" onClick={() => setDevice(d)}>{d}</Button>)}</div>
+            </CardHeader>
+            <CardContent>{token && <DevicePreview key={`${pageIndex}-${previewKey}-${device}`} width={PREVIEW_WIDTHS[device]} src={`/design-preview/import/${importId}/${pageIndex}?token=${encodeURIComponent(token)}`} />}</CardContent>
+          </Card>
         </div>
       )}
 
@@ -120,6 +161,70 @@ export function ImportReview({ importId, onBack }: { importId: string; onBack: (
         </Card>
       )}
     </div>
+  )
+}
+
+/** Pages of the import: frame per device, type and layout. Saving re-reads the stored Figma snapshot. */
+function PlanEditor({ job, disabled, onSaved }: { job: ImportDetail; disabled: boolean; onSaved: () => void }) {
+  const [plan, setPlan] = useState<PlanPage[]>(() => job.plan.map((p) => ({ ...p, layout: p.layout ?? 'sections', frames: { ...p.frames } })))
+  const [saving, setSaving] = useState(false)
+  const names = new Map<string, string>()
+  for (const p of job.plan) for (const d of DEVICES) if (p.frames[d]) names.set(p.frames[d]!, `${p.title} (${d})`)
+  for (const p of job.pages) for (const f of p.frames) if (f.name) names.set(f.nodeId, f.name)
+  const frameIds = [...names.keys()]
+  const update = (i: number, patch: Partial<PlanPage>) => setPlan((all) => all.map((p, j) => (j === i ? { ...p, ...patch } : p)))
+  const assign = (i: number, device: (typeof DEVICES)[number], id: string) => setPlan((all) => all.map((p, j) => {
+    const frames = { ...p.frames }
+    if (j === i) { if (id) frames[device] = id; else delete frames[device] }
+    else for (const d of DEVICES) if (id && frames[d] === id) delete frames[d] // a frame belongs to one page
+    return { ...p, frames }
+  }).filter((p, j) => j === i || Object.keys(p.frames).length))
+  const save = async () => {
+    const parsed = importPlanSchema.safeParse({ fileKey: job.file.fileKey, branchKey: job.file.branchKey, pages: plan })
+    if (!parsed.success) { toast.error(parsed.error.issues[0]?.message ?? 'Check the pages'); return }
+    if (!window.confirm('Rebuild the pages from the Figma design? Section changes made in this review are reset.')) return
+    setSaving(true)
+    try { await adminApi.post(`/api/design/imports/${job.id}/plan`, { pages: plan }); toast.success('Rebuilding the pages…'); onSaved() }
+    catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Pages and layout</CardTitle>
+        <CardDescription>Put each device's frame on the same page (e.g. the phone frame as the Home page's mobile design). <strong>Exact Figma design</strong> keeps positions, scrolling areas, fixed bars and prototype animations; <strong>editable sections</strong> converts the frame into template sections.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {plan.map((row, i) => (
+          <div key={i} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_1fr_1fr_2fr] lg:items-end">
+            <div className="space-y-1"><div className="text-xs font-medium">Title</div><input className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={row.title} onChange={(e) => update(i, { title: e.target.value })} /></div>
+            <div className="space-y-1">
+              <div className="text-xs font-medium">Page type</div>
+              <select value={row.type} onChange={(e) => { const type = e.target.value as PlanPage['type']; update(i, { type, layout: defaultLayout(type), slug: type === 'PAGE' ? row.slug ?? (slugify(row.title) || 'page') : undefined }) }} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+                {PAGE_TYPES.map((t) => <option key={t} value={t}>{PAGE_TYPE_LABELS[t]}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-medium">Layout</div>
+              <select value={row.layout ?? 'sections'} onChange={(e) => update(i, { layout: e.target.value as PageLayout })} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+                {PAGE_LAYOUTS.map((l) => <option key={l} value={l}>{PAGE_LAYOUT_LABELS[l]}{l === defaultLayout(row.type) ? ' (recommended)' : ''}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {DEVICES.map((d) => (
+                <div key={d} className="space-y-1">
+                  <div className="text-xs font-medium capitalize">{d}</div>
+                  <select value={row.frames[d] ?? ''} onChange={(e) => assign(i, d, e.target.value)} className="h-9 w-full rounded-md border bg-background px-1 text-xs">
+                    <option value="">—</option>
+                    {frameIds.map((id) => <option key={id} value={id}>{names.get(id)}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <Button onClick={save} disabled={disabled || saving} variant="outline">{saving ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />} Rebuild pages</Button>
+      </CardContent>
+    </Card>
   )
 }
 

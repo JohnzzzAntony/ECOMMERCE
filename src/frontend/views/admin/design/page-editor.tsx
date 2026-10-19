@@ -16,6 +16,9 @@ import { Switch } from '@/frontend/components/ui/switch'
 import { Textarea } from '@/frontend/components/ui/textarea'
 import { SECTIONS, defaultSettings, newId, type SectionInstance, type SectionType } from '@/shared/sections/registry'
 import type { ChecklistItem, Seo } from '@/shared/store-pages'
+import { splitFreeformSection } from '@/shared/freeform-edit'
+import type { RichText } from '@/shared/sections/fields'
+import type { PreviewEvent, PreviewMessage } from '@/frontend/components/sections/preview-client'
 import type { DesignTokens } from '@/shared/design-tokens'
 import { AdminApiError, adminApi, errorMessage } from '../admin-api'
 import { SectionSettings, type Device } from './settings-form'
@@ -27,13 +30,20 @@ type PageData = {
   versions: { id: string; version: number; status: string; createdAt: string; publishedAt: string | null }[]
 }
 
+/** Plain text typed in the preview as rich text, keeping the marks of the layer's first run (bold, link, …). */
+function plainToRichText(text: string, marks: Record<string, unknown>): RichText {
+  const { text: _old, ...keep } = marks
+  void _old
+  return text.split(/\n{2,}/).map((p) => ({ type: 'p' as const, runs: [{ ...keep, text: p }] }))
+}
+
 const WIDTH: Record<Device, string> = { desktop: '100%', tablet: '820px', mobile: '390px' }
 const HISTORY_LIMIT = 100
 
 function SortableRow({ section, selected, onSelect, onToggle, onDuplicate, onDelete }: { section: SectionInstance; selected: boolean; onSelect: () => void; onToggle: () => void; onDuplicate: () => void; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
   const def = SECTIONS[section.type]
-  const title = String(section.settings.title ?? section.settings.text ?? section.settings.logoText ?? '') || def.name
+  const title = String(section.settings.title || section.settings.text || section.settings.logoText || section.settings.label || '') || def.name
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`flex items-center gap-1 rounded-md border bg-background px-1 py-1 ${selected ? 'border-brand-teal ring-1 ring-brand-teal' : ''} ${isDragging ? 'z-10 shadow-lg' : ''} ${section.hidden ? 'opacity-50' : ''}`}>
       <button type="button" className="cursor-grab p-1 text-muted-foreground" aria-label={`Reorder ${def.name}`} {...attributes} {...listeners}><GripVertical className="size-4" /></button>
@@ -52,7 +62,10 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
   const [data, setData] = useState<PageData | null>(null)
   const [sections, setSections] = useState<SectionInstance[]>([])
   const [revision, setRevision] = useState(0)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelectedSection] = useState<string | null>(null)
+  // Layer of a Figma section selected in the layer tree or by clicking the preview.
+  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const setSelected = (id: string | null, node: string | null = null) => { setSelectedSection(id); setSelectedNode(node) }
   const [device, setDevice] = useState<Device>('desktop')
   const [saving, setSaving] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'conflict'>('idle')
   const [past, setPast] = useState<SectionInstance[][]>([])
@@ -82,13 +95,8 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
   }, [pageId, load])
 
   // Live preview: post the current sections to the iframe on every change.
-  const post = useCallback(() => iframe.current?.contentWindow?.postMessage({ type: 'nexecoms:preview', sections: latest.current.sections, selectedId: selected }, window.location.origin), [selected])
+  const post = useCallback(() => iframe.current?.contentWindow?.postMessage({ type: 'nexecoms:preview', sections: latest.current.sections, selectedId: selected, selectedNodeId: selectedNode } satisfies PreviewMessage, window.location.origin), [selected, selectedNode])
   useEffect(() => { post() }, [sections, selected, post])
-  useEffect(() => {
-    const onMessage = (e: MessageEvent) => { if (e.origin === window.location.origin && e.data?.type === 'nexecoms:preview-ready') post() }
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [post])
 
   const save = useCallback(async () => {
     setSaving('saving')
@@ -110,6 +118,34 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
     saveTimer.current = setTimeout(save, 1200)
   }
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current) }, [])
+
+  // Preview events: ready, click-to-select, inline text edits of Figma layers.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin || e.source !== iframe.current?.contentWindow) return
+      const msg = e.data as PreviewEvent
+      if (msg?.type === 'nexecoms:preview-ready') post()
+      else if (msg?.type === 'nexecoms:select' && sections.some((s) => s.id === msg.sectionId)) setSelected(msg.sectionId, msg.nodeId)
+      else if (msg?.type === 'nexecoms:edit-text' && typeof msg.text === 'string') {
+        const s = sections.find((x) => x.id === msg.sectionId && x.type === 'freeform')
+        if (!s) return
+        const texts = (s.settings.texts ?? {}) as Record<string, RichText>
+        const marks = { ...texts[msg.nodeId]?.[0]?.runs[0] }
+        change(sections.map((x) => (x === s ? { ...s, settings: { ...s.settings, texts: { ...texts, [msg.nodeId]: plainToRichText(msg.text.slice(0, 5000), marks) } }, overriddenFields: s.overriddenFields.includes('texts') ? s.overriddenFields : [...s.overriddenFields, 'texts'] } : x)))
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  })
+
+  const splitSection = (s: SectionInstance) => {
+    const r = splitFreeformSection(s)
+    if (!r.ok) { toast.error(r.reason); return }
+    const i = sections.indexOf(s)
+    change([...sections.slice(0, i), ...r.sections, ...sections.slice(i + 1)])
+    setSelected(r.sections[0].id)
+    toast.success(`Split into ${r.sections.length} sections`)
+  }
 
   const undo = () => { const prev = past.at(-1); if (!prev) return; setFuture((f) => [sections, ...f]); setPast((p) => p.slice(0, -1)); change(prev, false) }
   const redo = () => { const next = future[0]; if (!next) return; setPast((p) => [...p, sections]); setFuture((f) => f.slice(1)); change(next, false) }
@@ -211,7 +247,8 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
           {current ? (
             <>
               <div className="mb-3 flex items-center justify-between"><div className="font-semibold">{SECTIONS[current.type].name}</div>{device !== 'desktop' && <Badge variant="outline">Editing {device}</Badge>}</div>
-              <SectionSettings key={current.id} section={current} device={device} ctx={ctx} onChange={(s) => change(sections.map((x) => (x.id === s.id ? s : x)))} />
+              <SectionSettings key={current.id} section={current} device={device} ctx={ctx} onChange={(s) => change(sections.map((x) => (x.id === s.id ? s : x)))}
+                selectedNode={selectedNode} onSelectNode={setSelectedNode} onSplit={() => splitSection(current)} />
             </>
           ) : <p className="text-sm text-muted-foreground">Select a section to edit its settings.</p>}
         </aside>

@@ -5,8 +5,9 @@
 //   4. freeform fallback (keeps the Figma layout, text/images/links stay editable).
 // Images are written as pending references ("pending:img:<imageRef>" / "pending:svg:<nodeId>") that the asset
 // stage replaces with stored URLs. Pure: no I/O.
-import { plainText, walkIR, type IRLink, type IRNode, type IRPage, type IRWarning } from '@/shared/design-ir'
+import { plainText, reachableVariants, walkIR, type IRLink, type IRNode, type IRPage, type IRWarning } from '@/shared/design-ir'
 import { NO_LINK, type LinkValue, type RichText } from '@/shared/sections/fields'
+import { splitFreeformSection } from '@/shared/freeform-edit'
 import { SECTIONS, SECTION_TYPES, defaultSettings, newId, type SectionInstance, type SectionType } from '@/shared/sections/registry'
 
 export type SavedMapping = { sectionType: string; fieldMap: Record<string, string> }
@@ -14,8 +15,10 @@ export type MappingContext = {
   saved: Map<string, SavedMapping>
   /** Frame node id → page link slug ('' = home) for prototype links between imported frames. */
   framePages: Map<string, string>
+  /** Component variants that prototype interactions change to (IRDocument.variants). */
+  variants?: Record<string, IRNode>
 }
-export type MappedPage = { title: string; type: string; slug?: string; frames: { device: string; nodeId: string }[]; sections: SectionInstance[]; warnings: IRWarning[] }
+export type MappedPage = { title: string; type: string; slug?: string; frames: { device: string; nodeId: string; name?: string }[]; sections: SectionInstance[]; warnings: IRWarning[] }
 
 const ALIASES: Record<string, SectionType> = {
   announcement: 'announcement-bar', products: 'product-grid', product: 'product-detail', collections: 'collection-list',
@@ -320,7 +323,7 @@ export function extract(type: SectionType, node: IRNode, ctx: MappingContext, fi
     case 'spacer': Object.assign(s, { height: Math.min(400, Math.round(node.height / 4) * 4), mobileHeight: Math.min(400, Math.round(node.height / 8) * 4) }); break
     case 'freeform': {
       const largest = [...features(node).texts].sort(byFont)[0]
-      Object.assign(s, { tree: node, texts: {}, images: {}, links: {}, headingNodeId: largest?.id ?? '' })
+      Object.assign(s, { tree: node, texts: {}, images: {}, links: freeformLinks([node, ...Object.values(reachableVariants([node], ctx.variants))], ctx), headingNodeId: largest?.id ?? '', variants: reachableVariants([node], ctx.variants) })
       break
     }
   }
@@ -351,12 +354,40 @@ function mapNode(node: IRNode, index: number, frameWidth: number, fileKey: strin
 /** Keys compared between desktop and tablet/mobile sections to build responsive overrides. */
 const RESPONSIVE_KEYS = ['title', 'subtitle', 'body', 'image', 'layout', 'imagePosition', 'align', 'columns', 'minHeight', 'paddingTop', 'paddingBottom', 'text', 'eyebrow', 'height']
 
+/**
+ * Exact layout: the whole frame becomes one freeform section, with the tablet/mobile frames as device trees, so
+ * positions, overlaps, scrolling areas, fixed layers and prototype motion stay as designed.
+ */
+function freeformLinks(roots: IRNode[], ctx: MappingContext): Record<string, LinkValue> {
+  const links: Record<string, LinkValue> = {}
+  for (const root of roots) walkIR(root, (node) => {
+    if (node.link) links[node.id] = toLink(node.link, ctx)
+  })
+  return links
+}
+
+function exactSection(page: IRPage, primary: IRPage['frames'][number], ctx: MappingContext): SectionInstance {
+  const { settings } = extract('freeform', primary.root, ctx, {}, primary.root.width)
+  const trees = Object.fromEntries(page.frames.filter((f) => f !== primary && f.device !== 'desktop').map((f) => [f.device, f.root]))
+  settings.trees = trees
+  settings.variants = reachableVariants([primary.root, ...Object.values(trees)], ctx.variants)
+  settings.links = freeformLinks([primary.root, ...Object.values(trees), ...Object.values(settings.variants as Record<string, IRNode>)], ctx)
+  settings.exact = true
+  return { id: newId(), type: 'freeform', figmaNodeId: primary.root.id, settings, blocks: [], responsive: {}, hidden: false, overriddenFields: [], mappingConfidence: 1 }
+}
+
 export function mapPage(page: IRPage, fileKey: string, ctx: MappingContext, forcedTypes: Map<string, SectionType> = new Map()): MappedPage {
   const warnings: IRWarning[] = []
   const primary = page.frames.find((f) => f.device === 'desktop') ?? page.frames[0]
   const frameWidth = primary.root.width
   let sections: SectionInstance[]
-  if (page.type === 'HEADER' || page.type === 'FOOTER') {
+  if (page.layout === 'exact') {
+    // Split into one section per band of the design (when it keeps the look), so each part can be reordered,
+    // hidden or removed and library sections can go between them, as in a Shopify theme.
+    const whole = exactSection(page, primary, ctx)
+    const split = splitFreeformSection(whole)
+    sections = split.ok ? split.sections : [whole]
+  } else if (page.type === 'HEADER' || page.type === 'FOOTER') {
     const type = page.type === 'HEADER' ? 'header' : 'footer'
     const forced = forcedTypes.get(primary.root.id)
     sections = [mapNode(primary.root, 0, frameWidth, fileKey, ctx, forced ?? type)]
@@ -379,7 +410,7 @@ export function mapPage(page: IRPage, fileKey: string, ctx: MappingContext, forc
   }
 
   // Responsive overrides from paired frames, matched by position.
-  for (const frame of page.frames.filter((f) => f !== primary)) {
+  for (const frame of page.layout === 'exact' ? [] : page.frames.filter((f) => f !== primary)) {
     if (frame.device === 'desktop') continue
     const device = frame.device as 'tablet' | 'mobile'
     const nodes = page.type === 'HEADER' || page.type === 'FOOTER' ? [frame.root] : sectionNodes(frame.root)
@@ -396,8 +427,8 @@ export function mapPage(page: IRPage, fileKey: string, ctx: MappingContext, forc
   }
 
   enforceHeadings(sections)
-  for (const s of sections) if (s.type === 'freeform') warnings.push({ code: 'UNMAPPED_SECTION', nodeId: s.figmaNodeId ?? undefined, pageTitle: page.title, message: `A section of “${page.title}” didn't match a template and was kept as a freeform layout. Choose a section type in review, or name the frame “Section/<type>” in Figma.` })
-  return { title: page.title, type: page.type, ...(page.slug ? { slug: page.slug } : {}), frames: page.frames.map((f) => ({ device: f.device, nodeId: f.nodeId })), sections, warnings }
+  for (const s of sections) if (s.type === 'freeform' && !s.settings.exact) warnings.push({ code: 'UNMAPPED_SECTION', nodeId: s.figmaNodeId ?? undefined, pageTitle: page.title, message: `A section of “${page.title}” didn't match a template and was kept as a freeform layout. Choose a section type in review, or name the frame “Section/<type>” in Figma.` })
+  return { title: page.title, type: page.type, ...(page.slug ? { slug: page.slug } : {}), frames: page.frames.map((f) => ({ device: f.device, nodeId: f.nodeId, name: f.name })), sections, warnings }
 }
 
 /** First hero heading (else the first heading) is the page's h1; every other h1 becomes h2. */
@@ -406,6 +437,8 @@ export function enforceHeadings(sections: SectionInstance[]) {
   const h1 = withHeading.find((s) => s.type === 'hero' && !s.overriddenFields.includes('headingLevel'))
     ?? withHeading.find((s) => s.overriddenFields.includes('headingLevel') && s.settings.headingLevel === 'h1')
     ?? withHeading.find((s) => s.type !== 'freeform')
+    ?? withHeading.find((s) => s.settings.headingNodeId)
+    ?? withHeading[0]
   for (const s of withHeading) {
     if (s === h1) { if (!s.overriddenFields.includes('headingLevel')) s.settings.headingLevel = 'h1' }
     else if (s.settings.headingLevel === 'h1') s.settings.headingLevel = 'h2'

@@ -8,6 +8,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { cloudinary } from '@/backend/integrations/cloudinary'
+import { uploadDesignBuffer as upload } from './cloudinary-upload'
 
 // DESIGN_STORAGE=local keeps everything under .design-storage/ (development and E2E without Cloudinary); public
 // files are served by /api/design/storage/[...key]. Never used in production.
@@ -21,14 +22,6 @@ function assertKey(key: string, storeId: string) {
   if (!KEY.test(key) || !key.startsWith(`tenants/${storeId}/`) || key.includes('..')) throw new Error('Invalid storage key')
 }
 
-type UploadResult = { secure_url: string; public_id: string; width?: number; height?: number; format?: string }
-
-function upload(data: Buffer, options: Record<string, unknown>): Promise<UploadResult> {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream({ overwrite: true, invalidate: true, ...options }, (error, res) =>
-      (error || !res ? reject(error ?? new Error('Upload failed')) : resolve(res as UploadResult))).end(data)
-  })
-}
 
 export const snapshotKey = (storeId: string, fileKey: string, importId: string, kind: 'raw' | 'ir') =>
   `tenants/${storeId}/figma/${fileKey}/${importId}${kind === 'ir' ? '.ir' : ''}.json.gz`

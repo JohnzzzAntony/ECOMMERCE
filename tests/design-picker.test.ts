@@ -83,11 +83,11 @@ describe('pairing and page types', () => {
       { id: '1:7', name: 'Homepage v2', width: 1440, height: 1 },
     ])
     expect(plan).toEqual([
-      { title: 'Home', type: 'HOME', frames: { desktop: '1:1', mobile: '1:2' } },
-      { title: 'Product', type: 'PRODUCT_TEMPLATE', frames: { desktop: '1:3', mobile: '1:4' } },
-      { title: 'About us', type: 'PAGE', slug: 'about-us', frames: { desktop: '1:5' } },
-      { title: 'About us', type: 'PAGE', slug: 'about-us-2', frames: { desktop: '1:6' } },
-      { title: 'Homepage v2', type: 'PAGE', slug: 'homepage-v2', frames: { desktop: '1:7' } },
+      { title: 'Home', type: 'HOME', layout: 'exact', frames: { desktop: '1:1', mobile: '1:2' } },
+      { title: 'Product', type: 'PRODUCT_TEMPLATE', layout: 'sections', frames: { desktop: '1:3', mobile: '1:4' } },
+      { title: 'About us', type: 'PAGE', layout: 'exact', slug: 'about-us', frames: { desktop: '1:5' } },
+      { title: 'About us', type: 'PAGE', layout: 'exact', slug: 'about-us-2', frames: { desktop: '1:6' } },
+      { title: 'Homepage v2', type: 'PAGE', layout: 'exact', slug: 'homepage-v2', frames: { desktop: '1:7' } },
     ])
   })
 
@@ -241,6 +241,7 @@ test('queue import: validates against the file, stores FigmaFile + QUEUED Design
   expect(body).toMatchObject({ status: 'QUEUED', figmaVersion: '2130034450', frameCount: 4, file: { fileKey: FILE_KEY, name: 'Medi Store Redesign', branchKey: null } })
   expect(fake.table('figmaFile')).toMatchObject([{ storeId: 'legacy', fileKey: FILE_KEY, branchKey: '', version: '2130034450', connectionId: 'conn_legacy' }])
   expect(fake.table('designImport')).toMatchObject([{ storeId: 'legacy', status: 'QUEUED', selectedNodeIds: ['1:1', '1:2', '1:5', '2:2'], createdBy: users.editorA.id }])
+  expect(body.pages.map((page: { layout: string }) => page.layout)).toEqual(['exact', 'exact', 'sections'])
   expect(fake.table('auditLog').at(-1)).toMatchObject({ action: 'design.import.create', storeId: 'legacy' })
 
   // A second import of the same file reuses the FigmaFile row.
@@ -273,4 +274,10 @@ test('isolation: store B sees none of store A\'s imports, and its imports use it
   expect((await a.json()).length).toBe(1)
   // A's editor has no role in store B.
   expect((await importsRoute.GET(req('shop-b.test', users.editorA, '/api/design/imports'))).status).toBe(403)
+})
+
+test('queue import preserves an explicitly chosen section layout', async () => {
+  const res = await post('shop-a.test', users.editorA, { ...plan, pages: [{ ...plan.pages[0], layout: 'sections' }] })
+  expect(res.status).toBe(201)
+  expect((await res.json()).pages[0].layout).toBe('sections')
 })
