@@ -1,13 +1,14 @@
 import { Button, Container, Heading, RText, RichTextView, SectionShell, SmartImage, responsive, settingsOf, type SectionProps } from './shared'
 import type { ImageValue, LinkValue, RichText } from '@/shared/sections/fields'
+import { BackgroundVideo } from './video'
 
-type HeroSettings = { eyebrow: string; title: string; headingLevel: string; subtitle: RichText; image: ImageValue; layout: string; overlay: number; align: string; ctaLabel: string; ctaLink: LinkValue; secondaryLabel: string; secondaryLink: LinkValue }
+type HeroSettings = { eyebrow: string; title: string; headingLevel: string; subtitle: RichText; image: ImageValue; video?: string; layout: string; overlay: number; align: string; ctaLabel: string; ctaLink: LinkValue; secondaryLabel: string; secondaryLink: LinkValue }
 
 export default function Hero({ section, priority }: SectionProps) {
   const s = settingsOf<HeroSettings>(section)
   const image = responsive<ImageValue>(section, 'image')
   const title = responsive<string>(section, 'title')
-  const background = s.layout === 'background' && !!s.image
+  const background = s.layout === 'background' && (!!s.image || !!s.video)
   const justify = s.align === 'center' ? 'center' : s.align === 'right' ? 'flex-end' : 'flex-start'
   const text = (
     <div className={`relative z-10 flex flex-col gap-4 ${background ? 'max-w-2xl' : ''}`} style={{ alignItems: justify, marginInline: background && s.align === 'center' ? 'auto' : undefined }}>
@@ -26,6 +27,7 @@ export default function Hero({ section, priority }: SectionProps) {
     return (
       <SectionShell section={section} className="flex items-center overflow-hidden" style={{ minHeight: 'var(--s-min-h, 520px)', color: section.settings.textColor ? undefined : '#fff' }}>
         <SmartImage image={image.base} mobile={image.mobile} fill priority={priority} sizes="100vw" />
+        {s.video && <BackgroundVideo url={s.video} poster={image.base?.url} label={s.title} />}
         <div className="absolute inset-0" style={{ background: `rgba(0,0,0,${(s.overlay ?? 0) / 100})` }} aria-hidden />
         <Container section={section}>{text}</Container>
       </SectionShell>

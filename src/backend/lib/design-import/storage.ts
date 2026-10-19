@@ -4,6 +4,7 @@
 //   tenants/{storeId}/figma/{fileKey}/{importId}.ir.json.gz   IR snapshot          (private raw)
 //   tenants/{storeId}/assets/{hash}                            images and SVGs      (public image)
 //   tenants/{storeId}/fonts/{family}/{file}.woff2              self-hosted fonts    (public raw)
+//   tenants/{storeId}/videos/{id}                              uploaded videos      (public video, uploaded by the browser)
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
@@ -60,4 +61,33 @@ export async function putFontFile(storeId: string, family: string, file: string,
   if (LOCAL) return localPut(key, data)
   const res = await upload(data, { resource_type: 'raw', type: 'upload', public_id: key })
   return res.secure_url
+}
+
+// ---------------------------------------------------------------- videos
+// Videos are uploaded by the admin's browser straight to Cloudinary with a signature issued here (no size limit on
+// our request bodies); the server then reads the stored resource back before registering it.
+export const videoKey = (storeId: string, id: string) => `tenants/${storeId}/videos/${id}`
+export const VIDEO_ID = /^[a-z0-9]{16,40}$/
+
+export function signVideoUpload(storeId: string, id: string) {
+  const config = cloudinary.config()
+  if (!config.cloud_name || !config.api_key || !config.api_secret) throw new Error('Configure Cloudinary before uploading videos')
+  const params = { public_id: videoKey(storeId, id), timestamp: Math.floor(Date.now() / 1000), overwrite: 'false' }
+  return { url: `https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloud_name)}/video/upload`, fields: { ...params, api_key: config.api_key, signature: cloudinary.utils.api_sign_request(params, config.api_secret) } }
+}
+
+/** The uploaded video as stored by Cloudinary (null if it doesn't exist). */
+export async function storedVideo(storeId: string, id: string): Promise<{ url: string; width: number; height: number; format: string; bytes: number } | null> {
+  const key = videoKey(storeId, id)
+  assertKey(key, storeId)
+  const r = await cloudinary.api.resource(key, { resource_type: 'video' }).catch(() => null) as { secure_url?: string; width?: number; height?: number; format?: string; bytes?: number } | null
+  if (!r?.secure_url) return null
+  return { url: r.secure_url, width: r.width ?? 1920, height: r.height ?? 1080, format: r.format ?? 'mp4', bytes: r.bytes ?? 0 }
+}
+
+/** Local driver only: the bytes are posted to our API. */
+export async function putLocalVideo(storeId: string, id: string, data: Buffer, format: 'mp4' | 'webm') {
+  const key = videoKey(storeId, id)
+  assertKey(key, storeId)
+  return { key, url: await localPut(`${key}.${format}`, data) }
 }

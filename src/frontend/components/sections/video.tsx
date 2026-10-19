@@ -3,6 +3,7 @@ import type { ImageValue } from '@/shared/sections/fields'
 
 /** YouTube/Vimeo become privacy-friendly embeds; https .mp4/.webm play natively. Anything else is ignored. */
 export function embedFor(url: string): { kind: 'iframe' | 'video'; src: string } | null {
+  if (/^\/api\/design\/storage\/[\w./-]+\.(mp4|webm)$/.test(url)) return { kind: 'video', src: url } // local storage driver
   try {
     const u = new URL(url)
     if (u.protocol !== 'https:') return null
@@ -29,5 +30,22 @@ export default function Video({ section }: SectionProps) {
         </div>
       </Container>
     </SectionShell>
+  )
+}
+
+/**
+ * A video filling its box as a background (Figma layer, hero): muted autoplay loop by default, covering the box
+ * like an image fill. YouTube/Vimeo play as a muted background embed.
+ */
+export function BackgroundVideo({ url, poster, autoplay = true, loop = true, controls = false, label }: { url: string; poster?: string; autoplay?: boolean; loop?: boolean; controls?: boolean; label?: string }) {
+  const embed = embedFor(url)
+  if (!embed) return null
+  if (embed.kind === 'iframe') {
+    const params = `autoplay=${autoplay ? 1 : 0}&mute=1&muted=1&loop=${loop ? 1 : 0}&controls=${controls ? 1 : 0}&background=${controls ? 0 : 1}&playsinline=1`
+    return <iframe src={`${embed.src}${embed.src.includes('?') ? '&' : '?'}${params}`} title={label || 'Video'} loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" className="pointer-events-none absolute inset-0 h-full w-full border-0" style={{ pointerEvents: controls ? 'auto' : 'none' }} />
+  }
+  return (
+    <video src={embed.src} poster={poster} autoPlay={autoplay} loop={loop} muted={autoplay || !controls} controls={controls} playsInline preload={autoplay ? 'auto' : 'metadata'}
+      aria-label={label} className="absolute inset-0 h-full w-full object-cover" />
   )
 }

@@ -104,7 +104,7 @@ export async function remapSection(request: Request, { params }: Params) {
       const node = findNode(frame.root, section.figmaNodeId)
       if (!node) throw new HttpError(404, 'Figma layer not found')
       const nextType = (type ?? section.type) as SectionType
-      const mctx = { saved: await savedMappings(ctx, job.file.fileKey), framePages: framePages(job.pageAssignments as unknown as ImportPlan['pages']) }
+      const mctx = { saved: await savedMappings(ctx, job.file.fileKey), framePages: framePages(job.pageAssignments as unknown as ImportPlan['pages'], ir.pages) }
       const { settings, blocks } = extract(nextType, node, mctx, fieldMap ?? {}, frame.root.width)
       const [resolved] = resolveRefs([{ ...page, sections: [{ ...section, type: nextType, settings, blocks }] }], result.assets ?? {})
       Object.assign(section, resolved.sections[0], { mappingConfidence: 1 })
@@ -148,13 +148,15 @@ export async function retryRoute(request: Request, { params }: Params) {
 /**
  * Change how the imported frames become pages (pairing per device, page types, exact layout vs editable sections).
  * Re-runs normalize → mapping → assets from the stored Figma snapshot (no new file download; images already
- * copied are reused). Section changes made in review are re-derived.
+ * copied are reused). Section changes made in review are re-derived. Installed pages keep their versions until the
+ * rebuilt import is installed again (as new drafts).
  */
 export async function planRoute(request: Request, { params }: Params) {
   try {
     const ctx = await requireStoreRole(request, 'EDITOR')
     const job = await loadImport(ctx, (await params).id)
-    if (job.status !== 'REVIEW') throw new HttpError(409, 'Pages can only be changed while the import is in review')
+    // An installed import can be rebuilt too (e.g. after an importer update); installing again only adds drafts.
+    if (job.status !== 'REVIEW' && job.status !== 'INSTALLED') throw new HttpError(409, 'Pages can only be changed once the import is ready for review')
     const input = await readJson(request) as { pages?: unknown }
     const parsed = importPlanSchema.safeParse({ fileKey: job.file.fileKey, branchKey: job.file.branchKey || null, pages: input?.pages })
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid pages')

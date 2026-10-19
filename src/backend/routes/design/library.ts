@@ -8,6 +8,8 @@ import { rateLimit } from '@/backend/lib/rate-limit'
 import { audit, requireStoreRole } from '@/backend/lib/tenancy'
 import { AssetError, processImage, storeAsset } from '@/backend/lib/design-import/assets'
 import { uploadFont } from '@/backend/lib/design-import/fonts'
+import { LOCAL, VIDEO_ID, putLocalVideo, signVideoUpload, storedVideo, videoKey } from '@/backend/lib/design-import/storage'
+import { randomBytes } from 'node:crypto'
 import { contrastIssues, designTokensSchema } from '@/shared/design-tokens'
 
 const noStore = { 'Cache-Control': 'no-store' }
@@ -87,6 +89,59 @@ export async function uploadAsset(request: Request) {
     const asset = await storeAsset(ctx, image, { alt })
     if (alt) await ctx.db.asset.update({ where: { id: asset.id }, data: { alt, altReviewed: true } })
     return NextResponse.json({ ...asset, alt }, { status: 201, headers: noStore })
+  } catch (error) { return failure(error) }
+}
+
+const MAX_LOCAL_VIDEO = 100 * 1024 * 1024
+const newVideoId = () => randomBytes(12).toString('hex')
+/** Poster frame Cloudinary renders from the first second of a video. */
+const posterOf = (url: string) => (url.startsWith('https://res.cloudinary.com/') ? url.replace(/\/video\/upload\//, '/video/upload/so_0/').replace(/\.\w+$/, '.jpg') : undefined)
+
+/** Starts a video upload: a signed Cloudinary upload the browser performs, or (local driver) our own endpoint. */
+export async function signVideo(request: Request) {
+  try {
+    const ctx = await requireStoreRole(request, 'EDITOR')
+    rateLimit(`video-upload:${ctx.store.id}`, 30, 60 * 60_000)
+    const id = newVideoId()
+    if (LOCAL) return NextResponse.json({ id, local: true }, { headers: noStore })
+    return NextResponse.json({ id, local: false, ...signVideoUpload(ctx.store.id, id) }, { headers: noStore })
+  } catch (error) { return failure(error) }
+}
+
+/**
+ * Registers an uploaded video in the media library. Cloudinary: JSON { id } after the browser upload, verified by
+ * reading the resource back. Local driver: multipart { id, file } (mp4 or webm).
+ */
+export async function registerVideo(request: Request) {
+  try {
+    const ctx = await requireStoreRole(request, 'EDITOR')
+    let id: string, video: { url: string; width: number; height: number; format: string }
+    if (LOCAL && request.headers.get('content-type')?.startsWith('multipart/form-data')) {
+      const form = await request.formData()
+      const file = form.get('file')
+      id = String(form.get('id') ?? '')
+      if (!VIDEO_ID.test(id)) throw new HttpError(400, 'Invalid upload')
+      if (!(file instanceof File)) throw new HttpError(400, 'Choose a video')
+      if (file.size > MAX_LOCAL_VIDEO) throw new HttpError(413, 'Videos must be 100 MB or smaller')
+      const data = Buffer.from(await file.arrayBuffer())
+      const format = data.subarray(4, 8).toString('latin1') === 'ftyp' ? 'mp4' : data.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])) ? 'webm' : null
+      if (!format) throw new HttpError(400, 'Videos must be MP4 or WebM')
+      const width = Number(form.get('width')) || 1920, height = Number(form.get('height')) || 1080
+      video = { url: (await putLocalVideo(ctx.store.id, id, data, format)).url, width, height, format }
+    } else {
+      const body = await readJson(request)
+      id = String(body.id ?? '')
+      if (!VIDEO_ID.test(id)) throw new HttpError(400, 'Invalid upload')
+      const stored = await storedVideo(ctx.store.id, id)
+      if (!stored) throw new HttpError(404, 'The video upload did not finish')
+      video = stored
+    }
+    const existing = await ctx.db.asset.findFirst({ where: { hash: `video:${id}` } })
+    const asset = existing ?? await ctx.db.asset.create({
+      data: { storeId: ctx.store.id, hash: `video:${id}`, storageKey: videoKey(ctx.store.id, id), url: video.url, mime: `video/${video.format === 'webm' ? 'webm' : 'mp4'}`, width: Math.max(1, Math.round(video.width)), height: Math.max(1, Math.round(video.height)), variants: [], alt: '', altReviewed: true },
+    })
+    await audit(ctx, request, { actorId: ctx.user.id, action: 'design.video.upload', entityType: 'Asset', entityId: asset.id, diff: { url: asset.url } })
+    return NextResponse.json({ id: asset.id, url: asset.url, mime: asset.mime, width: asset.width, height: asset.height, alt: '', altReviewed: true, poster: posterOf(asset.url) ?? null }, { status: 201, headers: noStore })
   } catch (error) { return failure(error) }
 }
 

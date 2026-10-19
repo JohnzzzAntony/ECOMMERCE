@@ -1,7 +1,7 @@
 'use client'
 // Field controls for section settings, generated from the registry's Zod metadata (see src/shared/sections/fields.ts).
 import { useEffect, useState } from 'react'
-import { ImagePlus, Loader2, Plus, Search, Trash2, Upload, X } from 'lucide-react'
+import { Film, ImagePlus, Loader2, Plus, Search, Trash2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/frontend/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/frontend/components/ui/dialog'
@@ -15,38 +15,80 @@ import { fromMarkup, toMarkup } from '@/shared/sections/markup'
 import type { DesignTokens } from '@/shared/design-tokens'
 import { adminApi, errorMessage } from '../admin-api'
 
-export type Asset = { id: string; url: string; width: number; height: number; alt: string; altReviewed: boolean; mime: string; blurhash?: string | null }
+export type Asset = { id: string; url: string; width: number; height: number; alt: string; altReviewed: boolean; mime: string; blurhash?: string | null; poster?: string | null }
 export type EditorContext = { pages: { slug: string; title: string; type: string }[]; tokens: DesignTokens | null }
 
 const selectCls = 'h-9 w-full rounded-md border bg-background px-2 text-sm'
 
 // ---------------------------------------------------------------- media library picker
-export function MediaPicker({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (a: Asset) => void }) {
+/** Video dimensions read in the browser (sent with local uploads; Cloudinary measures its own). */
+function videoSize(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const v = document.createElement('video')
+    const url = URL.createObjectURL(file)
+    const done = (size: { width: number; height: number }) => { URL.revokeObjectURL(url); resolve(size) }
+    v.preload = 'metadata'
+    v.onloadedmetadata = () => done({ width: v.videoWidth || 1920, height: v.videoHeight || 1080 })
+    v.onerror = () => done({ width: 1920, height: 1080 })
+    v.src = url
+  })
+}
+
+/** Uploads a video: straight to Cloudinary with a signature from our API, then registers it in the media library. */
+export async function uploadVideo(file: File, onProgress?: (percent: number) => void): Promise<Asset> {
+  if (!/^video\/(mp4|webm|quicktime)$/.test(file.type)) throw new Error('Choose an MP4, WebM or MOV video')
+  const start = await adminApi.post<{ id: string; local: boolean; url?: string; fields?: Record<string, string | number> }>('/api/design/assets/video/sign', {})
+  if (start.local) {
+    const form = new FormData()
+    const size = await videoSize(file)
+    form.append('id', start.id); form.append('file', file); form.append('width', String(size.width)); form.append('height', String(size.height))
+    return adminApi.post<Asset>('/api/design/assets/video', form)
+  }
+  await new Promise<void>((resolve, reject) => {
+    const form = new FormData()
+    for (const [k, v] of Object.entries(start.fields ?? {})) form.append(k, String(v))
+    form.append('file', file)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', start.url!)
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100)) }
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Video upload failed (${xhr.status})`)))
+    xhr.onerror = () => reject(new Error('Video upload failed: network error'))
+    xhr.send(form)
+  })
+  return adminApi.post<Asset>('/api/design/assets/video', { id: start.id })
+}
+
+export function MediaPicker({ open, onClose, onPick, kind = 'image' }: { open: boolean; onClose: () => void; onPick: (a: Asset) => void; kind?: 'image' | 'video' }) {
   const [assets, setAssets] = useState<Asset[] | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [uploading, setUploading] = useState<number | boolean>(false)
   const [filter, setFilter] = useState('')
   useEffect(() => { if (open) adminApi.get<Asset[]>('/api/design/assets').then(setAssets).catch((e) => toast.error(errorMessage(e))) }, [open])
   const upload = async (file: File) => {
     setUploading(true)
-    const form = new FormData(); form.append('file', file)
-    try { const a = await adminApi.post<Asset>('/api/design/assets', form); setAssets((x) => [a, ...(x ?? []).filter((y) => y.id !== a.id)]) }
-    catch (e) { toast.error(errorMessage(e)) } finally { setUploading(false) }
+    try {
+      let a: Asset
+      if (kind === 'video') a = await uploadVideo(file, (p) => setUploading(p))
+      else { const form = new FormData(); form.append('file', file); a = await adminApi.post<Asset>('/api/design/assets', form) }
+      setAssets((x) => [a, ...(x ?? []).filter((y) => y.id !== a.id)])
+    } catch (e) { toast.error(errorMessage(e)) } finally { setUploading(false) }
   }
-  const shown = (assets ?? []).filter((a) => !filter || a.alt.toLowerCase().includes(filter.toLowerCase()))
+  const shown = (assets ?? []).filter((a) => a.mime.startsWith(`${kind}/`) && (!filter || a.alt.toLowerCase().includes(filter.toLowerCase())))
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl">
-        <DialogHeader><DialogTitle>Media library</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{kind === 'video' ? 'Videos' : 'Media library'}</DialogTitle></DialogHeader>
         <div className="flex gap-2">
-          <Input placeholder="Filter by alt text" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <Button asChild variant="outline"><label className="cursor-pointer">{uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} Upload<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="sr-only" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} /></label></Button>
+          {kind === 'image' && <Input placeholder="Filter by alt text" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+          <Button asChild variant="outline" className={kind === 'video' ? 'w-full' : undefined}><label className="cursor-pointer">{uploading !== false ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} {typeof uploading === 'number' ? `Uploading ${uploading}%` : kind === 'video' ? 'Upload video (MP4, WebM, MOV)' : 'Upload'}<input type="file" accept={kind === 'video' ? 'video/mp4,video/webm,video/quicktime' : 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml'} className="sr-only" disabled={uploading !== false} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) upload(f) }} /></label></Button>
         </div>
         <div className="grid max-h-[60vh] grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
           {!assets && <Loader2 className="size-5 animate-spin" />}
           {shown.map((a) => (
             <button key={a.id} type="button" onClick={() => { onPick(a); onClose() }} className="group overflow-hidden rounded-md border text-left hover:border-brand-teal">
-              <div className="flex aspect-square items-center justify-center bg-muted"><img src={a.mime === 'image/svg+xml' ? a.url : sizedImage(a.url, 240)} alt="" className="max-h-full max-w-full object-contain" loading="lazy" /></div>
-              <div className="truncate p-1.5 text-xs">{a.alt || <span className="text-amber-700">No alt text</span>}</div>
+              <div className="flex aspect-square items-center justify-center bg-muted">{a.mime.startsWith('video/')
+                ? <video src={a.url} muted playsInline preload="metadata" className="max-h-full max-w-full object-contain" />
+                : <img src={a.mime === 'image/svg+xml' ? a.url : sizedImage(a.url, 240)} alt="" className="max-h-full max-w-full object-contain" loading="lazy" />}</div>
+              <div className="truncate p-1.5 text-xs">{a.mime.startsWith('video/') ? `${a.width}×${a.height}` : a.alt || <span className="text-amber-700">No alt text</span>}</div>
             </button>
           ))}
         </div>
@@ -197,7 +239,8 @@ function RichTextField({ value, onChange }: { value: RichText; onChange: (v: Ric
 // ---------------------------------------------------------------- dispatcher
 export function FieldControl({ meta, value, onChange, ctx }: { meta: FieldMeta; value: unknown; onChange: (v: unknown) => void; ctx: EditorContext }) {
   switch (meta.control) {
-    case 'text': case 'video': return <Input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={meta.control === 'video' ? 'https://www.youtube.com/watch?v=…' : undefined} />
+    case 'text': return <Input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
+    case 'video': return <VideoField value={String(value ?? '')} onChange={onChange} />
     case 'textarea': return <Textarea value={String(value ?? '')} rows={3} onChange={(e) => onChange(e.target.value)} />
     case 'richtext': return <RichTextField value={(value as RichText) ?? []} onChange={onChange} />
     case 'image': return <ImageField value={(value as ImageValue) ?? null} onChange={onChange} />
@@ -224,6 +267,22 @@ export function FieldControl({ meta, value, onChange, ctx }: { meta: FieldMeta; 
       )
     }
   }
+}
+
+/** Video URL (YouTube, Vimeo, https MP4/WebM) or an uploaded video from the media library. */
+export function VideoField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="space-y-2">
+      {value && /\.(mp4|webm)$/i.test(value) && <video src={value} muted playsInline preload="metadata" className="aspect-video w-full rounded-md bg-black object-cover" />}
+      <div className="flex gap-2">
+        <Input value={value} onChange={(e) => onChange(e.target.value.trim())} placeholder="https://… (.mp4, YouTube or Vimeo)" aria-label="Video URL" />
+        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}><Film className="size-4" /> {value ? 'Replace' : 'Upload'}</Button>
+        {value && <Button type="button" variant="ghost" size="icon" onClick={() => onChange('')} aria-label="Remove video"><X className="size-4" /></Button>}
+      </div>
+      <MediaPicker kind="video" open={open} onClose={() => setOpen(false)} onPick={(a) => onChange(a.url)} />
+    </div>
+  )
 }
 
 export function FieldRow({ meta, children, overridden, onReset }: { meta: FieldMeta; children: React.ReactNode; overridden?: 'device' | null; onReset?: () => void }) {

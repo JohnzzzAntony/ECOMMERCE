@@ -47,6 +47,18 @@ const HEX = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i
 export const colorSchema = z.object({ token: z.string().max(80).optional(), value: z.string().regex(HEX).optional() }).nullable()
 export type ColorValue = z.infer<typeof colorSchema>
 
+/** Video: YouTube/Vimeo/https file URL, or an uploaded file (Cloudinary https, or /api/design/storage/ locally). */
+export const VIDEO_URL = /^(https:\/\/[^\s<>"']+|\/api\/design\/storage\/[\w./-]+)?$/
+/** A video playing in a freeform (Figma) layer, e.g. a hero background. Always muted when it autoplays. */
+export const layerVideoSchema = z.object({
+  url: z.string().min(1).max(2000).regex(VIDEO_URL),
+  poster: z.string().max(2000).regex(IMAGE_URL).optional(),
+  autoplay: z.boolean().default(true),
+  loop: z.boolean().default(true),
+  controls: z.boolean().default(false),
+})
+export type LayerVideo = z.infer<typeof layerVideoSchema>
+
 const m = <T extends z.ZodType>(schema: T, meta: FieldMeta) => schema.meta(meta as unknown as Record<string, unknown>)
 
 /** Field builders: f.text('Title', 'Default') etc. */
@@ -67,7 +79,7 @@ export const f = {
   collection: (label: string) => m(z.string().max(200).default(''), { control: 'collection', label }),
   heading: (label = 'Heading level', def: 'h1' | 'h2' | 'h3' | 'h4' = 'h2') =>
     m(z.enum(['h1', 'h2', 'h3', 'h4', 'p']).default(def), { control: 'heading', label, options: ['h1', 'h2', 'h3', 'h4', 'p'].map((v) => ({ value: v, label: v === 'p' ? 'Not a heading' : v.toUpperCase() })) }),
-  video: (label: string) => m(z.string().max(2000).regex(/^(https:\/\/[^\s<>"']+)?$/).default(''), { control: 'video', label }),
+  video: (label: string) => m(z.string().max(2000).regex(VIDEO_URL).default(''), { control: 'video', label }),
 }
 
 export function fieldMeta(schema: z.ZodType): FieldMeta | undefined {

@@ -2,6 +2,8 @@
 // Interactive parts of freeform sections (freeform.tsx):
 // - FigmaVariants: prototype "Change to" interactions (hover, click, press, drag, after delay) with smart animate.
 //   Layers are matched by their layer path (data-fl) and animated from their old to their new box (FLIP).
+// - Scroll stories: scroll-down/scroll-up interactions (screens the prototype steps through with the arrow keys)
+//   are driven by the wheel, touch swipes and the keyboard once the scene fills the screen, then smart-animate.
 // - FigmaScroll: mouse drag (with momentum) for Figma scrolling frames; touch and wheel scroll natively.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { IRInteraction, IRTransition } from '@/shared/design-ir'
@@ -64,6 +66,82 @@ export function FigmaVariants({ states, interactions }: { states: Record<string,
     entered.current = transition
     setCurrent(to)
   }, [states])
+  const story = Object.values(interactions).some((list) => list.some((i) => i.trigger === 'scroll-down' || i.trigger === 'scroll-up'))
+  const currentRef = useRef(current)
+  useEffect(() => { currentRef.current = current }, [current])
+
+  // Scroll story: step between scenes when the visitor scrolls at the edge of the current one.
+  useEffect(() => {
+    if (!story) return
+    let lockedUntil = 0, wheelSum = 0, wheelAt = 0, touchY: number | null = null, touchDone = false
+    const scene = () => wrap.current?.firstElementChild as HTMLElement | null
+    const edge = (dir: 'scroll-down' | 'scroll-up') => {
+      const el = scene()
+      const i = (interactions[currentRef.current] ?? []).find((x) => x.trigger === dir)
+      if (!el || !i) return null
+      const r = el.getBoundingClientRect(), vh = window.innerHeight
+      // Down: the scene (once its top is aligned with the screen's) shows its bottom: taller scenes scroll natively
+      // first. Up: its top is on screen.
+      const bottomAligned = r.top > 0 ? r.height : r.bottom
+      const at = dir === 'scroll-down' ? r.top < vh * 0.25 && bottomAligned <= vh + 2 && r.bottom > vh * 0.4 : r.top >= -2 && r.top < vh * 0.6
+      return at ? { i, top: r.top } : null
+    }
+    const step = (dir: 'scroll-down' | 'scroll-up') => {
+      const hit = edge(dir)
+      if (!hit) return false
+      if (Math.abs(hit.top) > 1) window.scrollBy({ top: hit.top, behavior: 'instant' as ScrollBehavior })
+      lockedUntil = performance.now() + (reducedMotion() ? 0 : hit.i.transition.duration) + 200
+      go(hit.i.to, hit.i.transition)
+      return true
+    }
+    const locked = () => performance.now() < lockedUntil
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return // pinch zoom
+      const dir = e.deltaY > 0 ? 'scroll-down' : 'scroll-up'
+      if (locked()) { if (edge(dir) || edge(dir === 'scroll-down' ? 'scroll-up' : 'scroll-down')) e.preventDefault(); return }
+      if (!edge(dir)) { wheelSum = 0; return }
+      e.preventDefault()
+      const now = performance.now()
+      if (now - wheelAt > 250) wheelSum = 0
+      wheelAt = now; wheelSum += e.deltaY
+      if (Math.abs(wheelSum) >= 30) { wheelSum = 0; step(dir) }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.altKey || e.ctrlKey || e.metaKey || t?.closest?.('input,textarea,select,[contenteditable="true"],[contenteditable="plaintext-only"]')) return
+      const dir = e.key === 'ArrowDown' || e.key === 'PageDown' || (e.key === ' ' && !e.shiftKey) ? 'scroll-down' : e.key === 'ArrowUp' || e.key === 'PageUp' || (e.key === ' ' && e.shiftKey) ? 'scroll-up' : null
+      if (!dir) return
+      if (locked()) { if (edge(dir)) e.preventDefault(); return }
+      if (step(dir)) e.preventDefault()
+    }
+    const onTouchStart = (e: TouchEvent) => { touchY = e.touches[0]?.clientY ?? null; touchDone = false }
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchY === null) return
+      const dy = touchY - (e.touches[0]?.clientY ?? touchY)
+      const dir = dy > 0 ? 'scroll-down' : 'scroll-up'
+      if (touchDone || locked()) { if (edge(dir)) e.preventDefault(); return }
+      if (!edge(dir)) return
+      e.preventDefault()
+      if (Math.abs(dy) > 40) { touchDone = true; step(dir) }
+    }
+    // Shown from outside (the editor selecting a layer of another scene).
+    const onShow = (e: Event) => { const id = (e as CustomEvent<string>).detail; go(states[id] ? id : '@', INSTANT) }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    window.addEventListener('figma:scene', onShow)
+    // A scene the editor asked for before this story mounted.
+    const wanted = (window as { __figmaScene?: string }).__figmaScene
+    const initial = wanted && wanted !== currentRef.current ? setTimeout(() => go(states[wanted] ? wanted : '@', INSTANT), 0) : undefined
+    return () => {
+      clearTimeout(initial)
+      window.removeEventListener('wheel', onWheel); window.removeEventListener('keydown', onKey)
+      window.removeEventListener('touchstart', onTouchStart); window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('figma:scene', onShow)
+    }
+  }, [story, interactions, states, go])
+
   const find = (trigger: IRInteraction['trigger'] | IRInteraction['trigger'][]) => (interactions[current] ?? []).find((i) => (Array.isArray(trigger) ? trigger : [trigger]).includes(i.trigger))
 
   useLayoutEffect(() => {

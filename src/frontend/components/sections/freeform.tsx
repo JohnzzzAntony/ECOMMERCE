@@ -4,11 +4,12 @@
 // scrolling areas, fixed/sticky layers and prototype variant animations (freeform-client.tsx).
 import type { CSSProperties, ReactNode } from 'react'
 import { applyVariant, childPaths, cssColor, walkIR, type IRColor, type IRInteraction, type IRNode, type IRPaint } from '@/shared/design-ir'
-import type { ColorValue, ImageValue, LayerStyle, LinkValue, RichText } from '@/shared/sections/fields'
+import type { ColorValue, ImageValue, LayerStyle, LayerVideo, LinkValue, RichText } from '@/shared/sections/fields'
+import { BackgroundVideo } from './video'
 import { RichTextView, SectionShell, SmartImage, SmartLink, color, settingsOf, type SectionProps } from './shared'
 import { FigmaScroll, FigmaVariants } from './freeform-client'
 
-type Overrides = { texts: Record<string, RichText>; images: Record<string, ImageValue>; links: Record<string, LinkValue>; styles: Record<string, LayerStyle>; hidden: Set<string>; headingNodeId: string; headingLevel: string }
+type Overrides = { texts: Record<string, RichText>; images: Record<string, ImageValue>; links: Record<string, LinkValue>; styles: Record<string, LayerStyle>; videos: Record<string, LayerVideo>; hidden: Set<string>; headingNodeId: string; headingLevel: string }
 type Ctx = {
   o: Overrides
   heading: string
@@ -190,6 +191,17 @@ function Node({ node, parent, c, root = false, fl, stateRoot = false }: NodeProp
   if (node.kind === 'text') {
     const Tag = (node.id === c.heading && ['h1', 'h2', 'h3', 'h4'].includes(c.o.headingLevel) ? c.o.headingLevel : 'div') as 'div'
     content = <Tag {...attrs} style={{ ...style, ...textStyle(node, c), ...layerStyle(node, c) }}><RichTextView value={c.o.texts[node.id] ?? irRuns(node)} className="space-y-0 [&>p]:m-0" /></Tag>
+  } else if (c.o.videos[node.id]) {
+    // A video set on an image or frame layer plays over its Figma fill, cropped to the layer like a fill.
+    const v = c.o.videos[node.id]
+    const override = c.o.images[node.id]
+    const poster = override?.url ?? (node.kind === 'image' ? node.image?.assetUrl : undefined) ?? node.fills.find((f) => f.type === 'image')?.assetUrl
+    content = (
+      <div {...attrs} style={{ ...style, overflow: 'hidden', ...(style.position ? {} : { position: 'relative' }) }}>
+        <BackgroundVideo url={v.url} poster={v.poster ?? (poster && SAFE_URL.test(poster) ? poster : undefined)} autoplay={v.autoplay} loop={v.loop} controls={v.controls} label={node.name} />
+        {node.kind === 'frame' && node.children.map((ch) => <Node key={ch.id} node={ch} parent={node} c={c} fl={fl !== undefined ? childPaths(fl, node.children)[node.children.indexOf(ch)] : undefined} />)}
+      </div>
+    )
   } else if (node.kind === 'image' || node.kind === 'vector') {
     const override = c.o.images[node.id]
     const url = override?.url ?? (node.kind === 'image' ? node.image?.assetUrl : node.vector?.assetUrl)
@@ -225,7 +237,7 @@ const isTree = (t: unknown): t is IRNode => !!t && typeof t === 'object' && Arra
 export default function Freeform({ section, editing = false }: SectionProps) {
   const s = settingsOf<Settings>(section)
   if (!isTree(s.tree)) return null
-  const o: Overrides = { texts: s.texts ?? {}, images: s.images ?? {}, links: s.links ?? {}, styles: s.styles ?? {}, hidden: new Set(Array.isArray(s.hiddenLayers) ? s.hiddenLayers : []), headingNodeId: s.headingNodeId, headingLevel: s.headingLevel }
+  const o: Overrides = { texts: s.texts ?? {}, images: s.images ?? {}, links: s.links ?? {}, styles: s.styles ?? {}, videos: s.videos ?? {}, hidden: new Set(Array.isArray(s.hiddenLayers) ? s.hiddenLayers : []), headingNodeId: s.headingNodeId, headingLevel: s.headingLevel }
   const variants = s.variants && typeof s.variants === 'object' ? s.variants : {}
   const exact = s.exact === true
   const ctxFor = (tree: IRNode): Ctx => {

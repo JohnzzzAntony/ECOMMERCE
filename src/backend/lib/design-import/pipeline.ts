@@ -10,10 +10,10 @@ import { storeDb, systemDb, type StoreDb } from '@/backend/lib/tenancy'
 import { figmaAuth } from '@/backend/lib/figma/connection'
 import { FigmaApiError, figmaRequest, type FigmaAuth } from '@/backend/lib/figma/client'
 import { apiKey } from '@/backend/lib/figma/files'
-import { IR_KEYS, walkIR, type IRDocument, type IRNode, type IRWarning } from '@/shared/design-ir'
+import { IR_KEYS, walkIR, type IRDocument, type IRNode, type IRPage, type IRTransition, type IRWarning } from '@/shared/design-ir'
 import type { ImportPlan } from '@/shared/design-plan'
 import type { DesignTokens } from '@/shared/design-tokens'
-import { changeTargets, newContext, normalizeNode, type FigmaNode } from './normalize'
+import { changeTargets, danglingKeyNavigation, keyNavigation, newContext, normalizeNode, type FigmaNode } from './normalize'
 import { extractTokens } from './tokens'
 import { mapPage, type MappedPage, type SavedMapping } from './mapping'
 import { AssetError, FIGMA_ASSET_HOSTS, processImage, safeFetch, storeAsset, type StoredAsset } from './assets'
@@ -139,6 +139,8 @@ export function buildIR(raw: RawSnapshot, pages: ImportPlan['pages'], fileKey: s
       return root ? [{ nodeId: id!, name: doc!.name, device, root }] : []
     }),
   }))
+  const merged = mergeScrollStories(irPages, pages, raw)
+  irPages.splice(0, irPages.length, ...merged)
   for (const w of ctx.warnings) {
     const page = irPages.find((p) => p.frames.some((f) => { let hit = false; walkIR(f.root, (n) => { hit ||= n.id === w.nodeId }); return hit }))
     if (page) w.pageTitle = page.title
@@ -147,6 +149,60 @@ export function buildIR(raw: RawSnapshot, pages: ImportPlan['pages'], fileKey: s
     fileKey, version: raw.file.version, pages: irPages, warnings: ctx.warnings, ...(Object.keys(variants).length ? { variants } : {}),
     fonts: [...ctx.fonts.entries()].map(([family, f]) => ({ family, weights: [...f.weights].sort((a, b) => a - b), italic: f.italic })),
   }
+}
+
+/**
+ * Scroll stories: pages whose desktop frames the prototype links with arrow-key navigation (↓ next screen) and
+ * that share a title become one page. The first frame is the page; the others are scenes it smart-animates to
+ * when the visitor scrolls (scroll-down/scroll-up interactions on the scene roots). Exact layout only.
+ */
+export function mergeScrollStories<P extends IRPage>(irPages: P[], plan: ImportPlan['pages'], raw: RawSnapshot): P[] {
+  const title = (i: number) => plan[i].title.trim().toLowerCase()
+  const desktop = (i: number) => plan[i].frames.desktop
+  const byFrame = new Map(plan.map((p, i) => [p.frames.desktop, i] as const).filter(([id]) => !!id))
+  const next = new Map<number, { to: number; transition: IRTransition }>()
+  plan.forEach((p, i) => {
+    const doc = desktop(i) ? raw.nodes[desktop(i)!]?.document : undefined
+    if (!doc || (irPages[i].layout ?? 'exact') !== 'exact') return
+    const hit = keyNavigation(doc, 'next').map((l) => ({ ...l, i: byFrame.get(l.to) })).find((l) => l.i !== undefined && l.i !== i && title(l.i) === title(i) && irPages[l.i].frames.some((f) => f.device === 'desktop'))
+    if (hit) next.set(i, { to: hit.i!, transition: hit.transition })
+  })
+  if (!next.size) return irPages
+  // A screen whose ↓ key link has no destination (missed in Figma) continues with the next screen of the same
+  // title in the file that nothing links to, when that screen starts a chain of its own or links back with ↑.
+  const linked = () => new Set([...next.values()].map((n) => n.to))
+  plan.forEach((_, i) => {
+    if (next.has(i) || !desktop(i) || (irPages[i].layout ?? 'exact') !== 'exact') return
+    const doc = raw.nodes[desktop(i)!]?.document
+    const t = doc && danglingKeyNavigation(doc, 'next')
+    if (!t) return
+    const taken = linked()
+    const j = plan.findIndex((p, k) => k > i && title(k) === title(i) && !taken.has(k) && irPages[k].frames.some((f) => f.device === 'desktop') && (irPages[k].layout ?? 'exact') === 'exact')
+    if (j < 0) return
+    const back = keyNavigation(raw.nodes[desktop(j)!]?.document ?? { id: '', name: '', type: '' }, 'prev').some((l) => l.to === desktop(i))
+    if (next.has(j) || back) next.set(i, { to: j, transition: t })
+  })
+  const targeted = linked()
+  const used = new Set<number>()
+  const starts = plan.map((_, i) => i).filter((i) => next.has(i) && !targeted.has(i)).sort((a, b) => Number(plan[b].type === 'HOME') - Number(plan[a].type === 'HOME'))
+  for (const start of starts) {
+    const chain = [start]
+    for (let n = next.get(start); n && !chain.includes(n.to) && !used.has(n.to); n = next.get(n.to)) chain.push(n.to)
+    if (chain.length < 2) continue
+    chain.forEach((i) => used.add(i))
+    const roots = chain.map((i) => irPages[i].frames.find((f) => f.device === 'desktop')!)
+    roots.forEach((f, k) => {
+      const down = k < roots.length - 1 ? next.get(chain[k])!.transition : null
+      const up = k > 0 ? next.get(chain[k - 1])!.transition : null
+      f.root.interactions = [
+        ...(f.root.interactions ?? []).filter((x) => x.trigger !== 'scroll-down' && x.trigger !== 'scroll-up'),
+        ...(down ? [{ trigger: 'scroll-down' as const, delay: 0, to: roots[k + 1].root.id, transition: down }] : []),
+        ...(up ? [{ trigger: 'scroll-up' as const, delay: 0, to: roots[k - 1].root.id, transition: up }] : []),
+      ]
+    })
+    irPages[start] = { ...irPages[start], scenes: roots.slice(1) }
+  }
+  return irPages.filter((_, i) => !used.has(i) || (starts.includes(i) && !!irPages[i].scenes))
 }
 
 async function normalizeStage(ctx: Ctx, job: Job) {
@@ -171,12 +227,18 @@ export async function savedMappings(ctx: Ctx, fileKey: string) {
 }
 
 /** Frame id → slug the page will have, for prototype links between imported frames. */
-export function framePages(pages: ImportPlan['pages']) {
+/** Frame node id → page link slug. Scenes of a scroll story link to the page they belong to. */
+export function framePages(pages: ImportPlan['pages'], irPages: IRPage[] = []) {
   const map = new Map<string, string>()
+  const slugOf = (p: { type: string; slug?: string }) => (p.type === 'HOME' ? '' : p.type === 'PAGE' ? p.slug ?? '' : p.type === 'CART' ? '_cart' : null)
   for (const p of pages) {
-    const slug = p.type === 'HOME' ? '' : p.type === 'PAGE' ? p.slug ?? '' : p.type === 'CART' ? '_cart' : null
+    const slug = slugOf(p)
     if (slug === null) continue
     for (const id of Object.values(p.frames)) if (id) map.set(id, slug)
+  }
+  for (const p of irPages) {
+    const slug = slugOf(p)
+    if (slug !== null) for (const f of p.scenes ?? []) map.set(f.nodeId, slug)
   }
   return map
 }
@@ -185,7 +247,7 @@ async function mappingStage(ctx: Ctx, job: Job, ir: () => Promise<IRDocument>) {
   if (resultOf(job).pages) return
   await advance(ctx, job, { status: 'MAPPING' })
   const doc = await ir()
-  const mctx = { saved: await savedMappings(ctx, job.file.fileKey), framePages: framePages(plan(job)), variants: doc.variants }
+  const mctx = { saved: await savedMappings(ctx, job.file.fileKey), framePages: framePages(plan(job), doc.pages), variants: doc.variants }
   const pages = doc.pages.filter((p) => p.frames.length).map((p) => mapPage(p, job.file.fileKey, mctx))
   const warnings = [...(job.warnings as IRWarning[]), ...pages.flatMap((p) => p.warnings)]
   await advance(ctx, job, { result: { ...resultOf(job), pages }, warnings, stats: { ...(job.stats as object), sections: pages.reduce((n, p) => n + p.sections.length, 0) } })
@@ -258,13 +320,13 @@ async function assetsStage(ctx: Ctx, job: Job, auth: FigmaAuth, ir: () => Promis
   const imageRefs = refs.filter((r) => r.startsWith('img:') && !assets[r]).map((r) => r.slice(4))
   const svgIds = refs.filter((r) => r.startsWith('svg:') && !assets[r]).map((r) => r.slice(4))
   const urls: Record<string, string> = {}
-  // A rate limit lasting hours or days (low-limit Figma seats) doesn't hold the whole import: the affected images
-  // are reported, and rebuilding the pages in review later copies only what is still missing.
+  // A rate limit lasting hours or days (low-limit Figma seats), or expired/revoked Figma access, doesn't hold the
+  // whole import: the affected images are reported, and rebuilding the pages later copies only what is missing.
   let limited: FigmaApiError | null = null
   const unlessLimited = async <T,>(request: () => Promise<T>) => {
     if (limited) return null
     try { return await request() } catch (error) {
-      if (error instanceof FigmaApiError && error.status === 429 && (error.retryAfterMs ?? 0) > LONG_RATE_LIMIT_MS) { limited = error; return null }
+      if (error instanceof FigmaApiError && ((error.status === 429 && (error.retryAfterMs ?? 0) > LONG_RATE_LIMIT_MS) || error.status === 401 || error.status === 403)) { limited = error; return null }
       throw error
     }
   }
@@ -279,7 +341,8 @@ async function assetsStage(ctx: Ctx, job: Job, auth: FigmaAuth, ir: () => Promis
   }
   if (limited) {
     const missing = [...imageRefs.map((r) => `img:${r}`), ...svgIds.map((r) => `svg:${r}`)].filter((r) => !urls[r]).length
-    warnings.push({ code: 'ASSET_FAILED', message: `${missing} image${missing === 1 ? '' : 's'} could not be copied: ${(limited as FigmaApiError).message}. Choose “Rebuild pages” later to copy them, or connect a Figma account with a Full or Dev seat.` })
+    const auth = [401, 403].includes((limited as FigmaApiError).status)
+    warnings.push({ code: 'ASSET_FAILED', message: `${missing} image${missing === 1 ? '' : 's'} could not be copied: ${(limited as FigmaApiError).message}. ${auth ? 'Reconnect Figma, then choose “Rebuild pages” to copy them.' : 'Choose “Rebuild pages” later to copy them, or connect a Figma account with a Full or Dev seat.'}` })
   }
   let lastCheckpoint = 0
   const checkpoint = async (frameRenders = result.frameRenders) => {

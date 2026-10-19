@@ -122,7 +122,7 @@ export function ImportReview({ importId, onBack }: { importId: string; onBack: (
       </div>
       <p className="text-xs text-muted-foreground">Installing creates draft versions of these pages and the design system. Nothing is published until you publish each page.</p>
 
-      {job.status === 'REVIEW' && job.plan?.length > 0 && <PlanEditor job={job} disabled={busy} onSaved={() => { setPageIndex(0); load() }} />}
+      {(job.status === 'REVIEW' || job.status === 'INSTALLED') && job.plan?.length > 0 && <PlanEditor job={job} disabled={busy} onSaved={() => { setPageIndex(0); load() }} />}
 
       <Card className="border-brand-teal/20 bg-brand-teal/5">
         <CardContent className="space-y-1 pt-5 text-sm">
@@ -182,7 +182,7 @@ function PlanEditor({ job, disabled, onSaved }: { job: ImportDetail; disabled: b
   const save = async () => {
     const parsed = importPlanSchema.safeParse({ fileKey: job.file.fileKey, branchKey: job.file.branchKey, pages: plan })
     if (!parsed.success) { toast.error(parsed.error.issues[0]?.message ?? 'Check the pages'); return }
-    if (!window.confirm('Rebuild the pages from the Figma design? Section changes made in this review are reset.')) return
+    if (!window.confirm(job.status === 'INSTALLED' ? 'Rebuild this import from the stored Figma design? Your installed pages are not changed until you install again.' : 'Rebuild the pages from the Figma design? Section changes made in this review are reset.')) return
     setSaving(true)
     try { await adminApi.post(`/api/design/imports/${job.id}/plan`, { pages: plan }); toast.success('Rebuilding the pages…'); onSaved() }
     catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
@@ -191,7 +191,7 @@ function PlanEditor({ job, disabled, onSaved }: { job: ImportDetail; disabled: b
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Pages and layout</CardTitle>
-        <CardDescription>Put each device's frame on the same page (e.g. the phone frame as the Home page's mobile design). <strong>Exact Figma design</strong> keeps positions, scrolling areas, fixed bars and prototype animations; <strong>editable sections</strong> converts the frame into template sections.</CardDescription>
+        <CardDescription>Put each device's frame on the same page (e.g. the phone frame as the Home page's mobile design). <strong>Exact Figma design</strong> keeps positions, scrolling areas, fixed bars and prototype animations; <strong>editable sections</strong> converts the frame into template sections. Screens the prototype steps through with the ↓/↑ arrow keys become one page that scrolls through them with the prototype's animations.{job.status === 'INSTALLED' && ' Rebuilding an installed import keeps your pages as they are until you install it again (as new drafts).'}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {plan.map((row, i) => (

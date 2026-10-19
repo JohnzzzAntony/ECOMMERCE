@@ -16,7 +16,7 @@ import { Switch } from '@/frontend/components/ui/switch'
 import { Textarea } from '@/frontend/components/ui/textarea'
 import { SECTIONS, defaultSettings, newId, type SectionInstance, type SectionType } from '@/shared/sections/registry'
 import type { ChecklistItem, Seo } from '@/shared/store-pages'
-import { splitFreeformSection } from '@/shared/freeform-edit'
+import { locateLayer, splitFreeformSection, type FreeformSettings } from '@/shared/freeform-edit'
 import type { RichText } from '@/shared/sections/fields'
 import type { PreviewEvent, PreviewMessage } from '@/frontend/components/sections/preview-client'
 import type { DesignTokens } from '@/shared/design-tokens'
@@ -66,6 +66,10 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
   // Layer of a Figma section selected in the layer tree or by clicking the preview.
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const setSelected = (id: string | null, node: string | null = null) => { setSelectedSection(id); setSelectedNode(node) }
+  // Scroll story scene shown in the preview ('@' = first): follows the selected layer or the layer panel's choice.
+  const [scene, setScene] = useState<string | null>(null)
+  // The preview has hydrated and answers clicks (it reports ready); until then it is static HTML.
+  const [previewReady, setPreviewReady] = useState(false)
   const [device, setDevice] = useState<Device>('desktop')
   const [saving, setSaving] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'conflict'>('idle')
   const [past, setPast] = useState<SectionInstance[][]>([])
@@ -95,7 +99,7 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
   }, [pageId, load])
 
   // Live preview: post the current sections to the iframe on every change.
-  const post = useCallback(() => iframe.current?.contentWindow?.postMessage({ type: 'nexecoms:preview', sections: latest.current.sections, selectedId: selected, selectedNodeId: selectedNode } satisfies PreviewMessage, window.location.origin), [selected, selectedNode])
+  const post = useCallback(() => iframe.current?.contentWindow?.postMessage({ type: 'nexecoms:preview', sections: latest.current.sections, selectedId: selected, selectedNodeId: selectedNode, scene } satisfies PreviewMessage, window.location.origin), [selected, selectedNode, scene])
   useEffect(() => { post() }, [sections, selected, post])
 
   const save = useCallback(async () => {
@@ -124,7 +128,7 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== window.location.origin || e.source !== iframe.current?.contentWindow) return
       const msg = e.data as PreviewEvent
-      if (msg?.type === 'nexecoms:preview-ready') post()
+      if (msg?.type === 'nexecoms:preview-ready') { setPreviewReady(true); post() }
       else if (msg?.type === 'nexecoms:select' && sections.some((s) => s.id === msg.sectionId)) setSelected(msg.sectionId, msg.nodeId)
       else if (msg?.type === 'nexecoms:edit-text' && typeof msg.text === 'string') {
         const s = sections.find((x) => x.id === msg.sectionId && x.type === 'freeform')
@@ -238,7 +242,7 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
 
         <div className="flex min-h-[70vh] justify-center overflow-auto rounded-lg border bg-muted/40 p-2">
           {token ? (
-            <iframe ref={iframe} title="Page preview" src={`/design-preview/page/${pageId}?token=${encodeURIComponent(token)}`} sandbox="allow-scripts allow-same-origin" onLoad={post}
+            <iframe ref={iframe} title="Page preview" src={`/design-preview/page/${pageId}?token=${encodeURIComponent(token)}`} sandbox="allow-scripts allow-same-origin" onLoad={post} data-ready={previewReady || undefined}
               className="h-[75vh] rounded border bg-white shadow-sm transition-[width]" style={{ width: WIDTH[device] }} />
           ) : <Loader2 className="m-auto size-6 animate-spin" />}
         </div>
@@ -248,7 +252,12 @@ export function PageEditor({ pageId, onBack }: { pageId: string; onBack: () => v
             <>
               <div className="mb-3 flex items-center justify-between"><div className="font-semibold">{SECTIONS[current.type].name}</div>{device !== 'desktop' && <Badge variant="outline">Editing {device}</Badge>}</div>
               <SectionSettings key={current.id} section={current} device={device} ctx={ctx} onChange={(s) => change(sections.map((x) => (x.id === s.id ? s : x)))}
-                selectedNode={selectedNode} onSelectNode={setSelectedNode} onSplit={() => splitSection(current)} />
+                selectedNode={selectedNode} onSplit={() => splitSection(current)} onShowScene={(key) => setScene(key.startsWith('scene:') ? key.slice(6) : '@')}
+                onSelectNode={(id) => {
+                  setSelectedNode(id)
+                  const at = id && current.type === 'freeform' ? locateLayer(current.settings as unknown as FreeformSettings, id) : null
+                  if (at?.key === 'tree') setScene('@'); else if (at?.key.startsWith('scene:')) setScene(at.key.slice(6))
+                }} />
             </>
           ) : <p className="text-sm text-muted-foreground">Select a section to edit its settings.</p>}
         </aside>

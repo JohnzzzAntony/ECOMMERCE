@@ -22,6 +22,12 @@ mock.module('@/backend/lib/design-import/storage', () => ({
   getSnapshot: async (_s: string, key: string) => { if (!stored.has(key)) throw new Error('missing snapshot'); return structuredClone(stored.get(key)) },
   putImage: async (storeId: string, hash: string, _d: Buffer, format: string) => ({ key: `tenants/${storeId}/assets/${hash}`, url: `https://res.cloudinary.com/demo/image/upload/tenants/${storeId}/assets/${hash}.${format}` }),
   putFontFile: async (storeId: string, family: string, file: string) => `https://res.cloudinary.com/demo/raw/upload/tenants/${storeId}/fonts/${family.toLowerCase().replace(/\W+/g, '-')}/${file}`,
+  LOCAL: false,
+  VIDEO_ID: /^[a-z0-9]{16,40}$/,
+  videoKey: (storeId: string, id: string) => `tenants/${storeId}/videos/${id}`,
+  signVideoUpload: () => ({ url: 'https://api.cloudinary.com/v1_1/demo/video/upload', fields: {} }),
+  storedVideo: async () => null,
+  putLocalVideo: async () => ({ key: '', url: '' }),
 }))
 
 const { encryptSecret } = await import('../src/backend/lib/figma/crypto')

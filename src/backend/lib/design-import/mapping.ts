@@ -370,7 +370,10 @@ function exactSection(page: IRPage, primary: IRPage['frames'][number], ctx: Mapp
   const { settings } = extract('freeform', primary.root, ctx, {}, primary.root.width)
   const trees = Object.fromEntries(page.frames.filter((f) => f !== primary && f.device !== 'desktop').map((f) => [f.device, f.root]))
   settings.trees = trees
-  settings.variants = reachableVariants([primary.root, ...Object.values(trees)], ctx.variants)
+  // Scroll story: the following screens are variants the page root smart-animates to on scroll.
+  const scenes = Object.fromEntries((page.scenes ?? []).map((f) => [f.root.id, f.root]))
+  settings.scenes = Object.keys(scenes)
+  settings.variants = reachableVariants([primary.root, ...Object.values(trees)], { ...ctx.variants, ...scenes })
   settings.links = freeformLinks([primary.root, ...Object.values(trees), ...Object.values(settings.variants as Record<string, IRNode>)], ctx)
   settings.exact = true
   return { id: newId(), type: 'freeform', figmaNodeId: primary.root.id, settings, blocks: [], responsive: {}, hidden: false, overriddenFields: [], mappingConfidence: 1 }

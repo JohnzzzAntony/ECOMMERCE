@@ -5,18 +5,27 @@ import { reachableVariants, walkIR, type IRNode } from './design-ir'
 import type { LayerStyle } from './sections/fields'
 import { newId, type SectionInstance } from './sections/registry'
 
-export type TreeKey = 'tree' | 'tablet' | 'mobile'
+/** A device design, or a scene of a scroll story (`scene:<variant id>`). */
+export type TreeKey = 'tree' | 'tablet' | 'mobile' | `scene:${string}`
 export type FreeformSettings = {
   tree: IRNode; trees?: { tablet?: IRNode; mobile?: IRNode }; variants?: Record<string, IRNode>; exact?: boolean; label?: string
+  scenes?: string[]; videos?: Record<string, unknown>
   texts: Record<string, unknown>; images: Record<string, unknown>; links: Record<string, unknown>; styles?: Record<string, LayerStyle>; hiddenLayers?: string[]
   headingNodeId: string; headingLevel: string
 }
 
 const isTree = (t: unknown): t is IRNode => !!t && typeof t === 'object' && Array.isArray((t as IRNode).children)
 
-/** The section's device designs, desktop first. */
+/** The section's device designs, desktop first, then the scenes of a scroll story. */
 export function layerTrees(s: FreeformSettings): [TreeKey, IRNode][] {
-  return ([['tree', s.tree], ['tablet', s.trees?.tablet], ['mobile', s.trees?.mobile]] as [TreeKey, unknown][]).filter((t): t is [TreeKey, IRNode] => isTree(t[1]))
+  const scenes = (s.scenes ?? []).map((id) => [`scene:${id}`, s.variants?.[id]] as [TreeKey, unknown])
+  return ([['tree', s.tree], ['tablet', s.trees?.tablet], ['mobile', s.trees?.mobile], ...scenes] as [TreeKey, unknown][]).filter((t): t is [TreeKey, IRNode] => isTree(t[1]))
+}
+
+/** Label of a design in the layer panel. */
+export function treeLabel(s: FreeformSettings, key: TreeKey) {
+  if (key.startsWith('scene:')) return `Scene ${(s.scenes ?? []).indexOf(key.slice(6)) + 2}`
+  return { tree: s.scenes?.length ? 'Scene 1' : 'Desktop', tablet: 'Tablet', mobile: 'Mobile' }[key as 'tree' | 'tablet' | 'mobile']
 }
 
 export type LayerLocation = { key: TreeKey; node: IRNode; parent: IRNode | null; index: number }
@@ -33,10 +42,12 @@ export function locateLayer(s: FreeformSettings, id: string): LayerLocation | nu
 export const isFlow = (parent: IRNode | null, child?: IRNode) => !!parent?.layout && parent.layout.mode !== 'none' && !child?.absolute
 
 /** Settings key a tree edit is recorded under (overriddenFields), so a Figma re-sync keeps it. */
-export const treeField = (key: TreeKey) => (key === 'tree' ? 'tree' : 'trees')
+export const treeField = (key: TreeKey) => (key === 'tree' ? 'tree' : key.startsWith('scene:') ? 'variants' : 'trees')
 
 function withTree(s: FreeformSettings, key: TreeKey, tree: IRNode): FreeformSettings {
-  return key === 'tree' ? { ...s, tree } : { ...s, trees: { ...s.trees, [key]: tree } }
+  if (key === 'tree') return { ...s, tree }
+  if (key.startsWith('scene:')) return { ...s, variants: { ...s.variants, [key.slice(6)]: tree } }
+  return { ...s, trees: { ...s.trees, [key]: tree } }
 }
 
 /** Copy of the tree with fn applied to the children array of the layer's parent. */
@@ -59,7 +70,7 @@ export function deleteLayer(s: FreeformSettings, id: string): FreeformSettings |
   if (!at?.parent) return null
   const gone = new Set(idsOf(at.node))
   const next = editParent(s, id, (children, i) => { children.splice(i, 1); return children })!
-  return { ...next, texts: omit(s.texts, gone), images: omit(s.images, gone), links: omit(s.links, gone), styles: omit(s.styles, gone), hiddenLayers: (s.hiddenLayers ?? []).filter((x) => !gone.has(x)) }
+  return { ...next, texts: omit(s.texts, gone), images: omit(s.images, gone), links: omit(s.links, gone), styles: omit(s.styles, gone), videos: omit(s.videos, gone), hiddenLayers: (s.hiddenLayers ?? []).filter((x) => !gone.has(x)) }
 }
 
 /** Duplicate a layer (with its overrides) right after itself. Returns the settings and the copy's id. */
@@ -75,7 +86,7 @@ export function duplicateLayer(s: FreeformSettings, id: string): { settings: Fre
   const hidden = s.hiddenLayers ?? []
   return {
     id: copy.id,
-    settings: { ...next, texts: copyMap(s.texts), images: copyMap(s.images), links: copyMap(s.links), styles: copyMap(s.styles), hiddenLayers: [...hidden, ...[...ids].filter(([from]) => hidden.includes(from)).map(([, to]) => to)] },
+    settings: { ...next, texts: copyMap(s.texts), images: copyMap(s.images), links: copyMap(s.links), styles: copyMap(s.styles), videos: copyMap(s.videos), hiddenLayers: [...hidden, ...[...ids].filter(([from]) => hidden.includes(from)).map(([, to]) => to)] },
   }
 }
 
@@ -155,6 +166,7 @@ export type SplitResult = { ok: true; sections: SectionInstance[] } | { ok: fals
 export function splitFreeformSection(section: SectionInstance): SplitResult {
   if (section.type !== 'freeform') return { ok: false, reason: 'Only Figma sections can be split.' }
   const s = section.settings as unknown as FreeformSettings
+  if (s.scenes?.length) return { ok: false, reason: 'This page scrolls through its screens with animations, so it stays one section.' }
   const trees = layerTrees(s)
   if (!trees.length) return { ok: false, reason: 'This section has no Figma layout.' }
   const split = trees.map(([key, tree]) => [key, tree, pageBands(tree)] as const)
@@ -178,7 +190,7 @@ export function splitFreeformSection(section: SectionInstance): SplitResult {
       const ownsHeading = ids.has(s.headingNodeId)
       const settings: FreeformSettings = {
         ...s, tree, trees: deviceTrees, variants, label: tree.name,
-        texts: pick(s.texts), images: pick(s.images), links: pick(s.links), styles: pick(s.styles), hiddenLayers: (s.hiddenLayers ?? []).filter((x) => ids.has(x)),
+        texts: pick(s.texts), images: pick(s.images), links: pick(s.links), styles: pick(s.styles), videos: pick(s.videos), hiddenLayers: (s.hiddenLayers ?? []).filter((x) => ids.has(x)),
         headingNodeId: ownsHeading ? s.headingNodeId : '', headingLevel: ownsHeading ? s.headingLevel : 'h2',
       }
       const firstFigmaId = split[0][2]![i].children.find((c) => c.position !== 'fixed')?.id ?? tree.id

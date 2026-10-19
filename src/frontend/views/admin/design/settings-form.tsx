@@ -6,12 +6,13 @@ import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Plus, Scissors, Shapes, Square, Trash2, Type } from 'lucide-react'
 import { Button } from '@/frontend/components/ui/button'
 import { Textarea } from '@/frontend/components/ui/textarea'
-import { LAYER_STYLE_FIELDS, fieldMeta, type FieldMeta, type ImageValue, type LayerStyleKey, type LinkValue, type RichText } from '@/shared/sections/fields'
+import { LAYER_STYLE_FIELDS, fieldMeta, type FieldMeta, type ImageValue, type LayerStyleKey, type LayerVideo, type LinkValue, type RichText } from '@/shared/sections/fields'
 import { fromMarkup, toMarkup } from '@/shared/sections/markup'
 import { SECTIONS, defaultBlockSettings, newId, type SectionInstance } from '@/shared/sections/registry'
 import { plainText, type IRNode } from '@/shared/design-ir'
-import { deleteLayer, duplicateLayer, isFlow, layerTrees, locateLayer, moveLayer, setLayerStyle, toggleLayer, treeField, type FreeformSettings as FS, type LayerLocation, type TreeKey } from '@/shared/freeform-edit'
-import { FieldControl, FieldRow, LinkField, MediaPicker, type EditorContext } from './fields'
+import { deleteLayer, duplicateLayer, isFlow, layerTrees, locateLayer, moveLayer, setLayerStyle, toggleLayer, treeField, treeLabel, type FreeformSettings as FS, type LayerLocation, type TreeKey } from '@/shared/freeform-edit'
+import { FieldControl, FieldRow, LinkField, MediaPicker, VideoField, type EditorContext } from './fields'
+import { Switch } from '@/frontend/components/ui/switch'
 
 export type Device = 'desktop' | 'tablet' | 'mobile'
 export const RESPONSIVE_KEYS = new Set(['title', 'subtitle', 'body', 'image', 'layout', 'imagePosition', 'align', 'columns', 'minHeight', 'paddingTop', 'paddingBottom', 'text', 'eyebrow', 'height'])
@@ -40,6 +41,8 @@ type SectionSettingsProps = {
   section: SectionInstance; onChange: (s: SectionInstance) => void; ctx: EditorContext; device: Device
   /** Figma sections: the selected layer (also picked by clicking the preview), and splitting an exact page. */
   selectedNode: string | null; onSelectNode: (id: string | null) => void; onSplit?: () => void
+  /** Scroll story: show this scene in the preview. */
+  onShowScene?: (key: TreeKey) => void
 }
 
 export function SectionSettings(props: SectionSettingsProps) {
@@ -104,23 +107,31 @@ function Blocks({ section, onChange, ctx }: { section: SectionInstance; onChange
  * Figma section, edited like a Shopify section: a layer tree (select, hide, reorder, duplicate, delete) and an
  * inspector for the selected layer (text, link, image, style). Layers can also be picked in the preview.
  */
-function FreeformSettings({ section, onChange, ctx, device, selectedNode, onSelectNode, onSplit }: SectionSettingsProps) {
+function FreeformSettings({ section, onChange, ctx, device, selectedNode, onSelectNode, onSplit, onShowScene }: SectionSettingsProps) {
   const s = section.settings as unknown as FFS
   const trees = layerTrees(s)
   const located = selectedNode ? locateLayer(s, selectedNode) : null
   const deviceKey: TreeKey = device !== 'desktop' && trees.some(([k]) => k === device) ? device : 'tree'
-  const shownKey = located?.key ?? deviceKey
+  const [view, setView] = useState<TreeKey | null>(null)
+  const shownKey = located?.key ?? (view && trees.some(([k]) => k === view) ? view : deviceKey)
   const shown = trees.find(([k]) => k === shownKey)?.[1] ?? s.tree
   const update = (next: FS, ...keys: string[]) => onChange({ ...section, settings: next as unknown as Record<string, unknown>, overriddenFields: keys.reduce((o, k) => (o.includes(k) ? o : [...o, k]), section.overriddenFields) })
   const headingMeta = fieldMeta(SECTIONS.freeform.settings.shape.headingLevel as never)!
   return (
     <div className="space-y-5">
       <p className="rounded-md bg-sky-50 p-2 text-xs text-sky-900">Click any part of the preview to select it, or double-click text to edit it there. Your changes are kept when the design is re-synced from Figma.</p>
-      {s.exact && onSplit && <Button type="button" size="sm" variant="outline" className="w-full" onClick={onSplit}><Scissors className="size-4" /> Split into sections</Button>}
+      {!!s.scenes?.length && <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">This page scrolls through {s.scenes.length + 1} screens with the animations from the Figma prototype. Pick a scene below to edit it; the preview shows it.</p>}
+      {s.exact && onSplit && !s.scenes?.length && <Button type="button" size="sm" variant="outline" className="w-full" onClick={onSplit}><Scissors className="size-4" /> Split into sections</Button>}
       <FieldRow meta={headingMeta}><FieldControl meta={headingMeta} value={s.headingLevel} onChange={(v) => update({ ...s, headingLevel: v as string }, 'headingLevel')} ctx={ctx} /></FieldRow>
       <div className="space-y-1">
         <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <span>Layers</span>{trees.length > 1 && <span className="font-normal normal-case">{shownKey === 'tree' ? 'Desktop' : shownKey === 'tablet' ? 'Tablet' : 'Mobile'} design</span>}
+          <span>Layers</span>
+          {trees.length > 1 && (
+            <select aria-label="Design" value={shownKey} className="h-7 rounded border bg-background px-1 text-xs font-normal normal-case"
+              onChange={(e) => { const key = e.target.value as TreeKey; setView(key); onSelectNode(null); onShowScene?.(key) }}>
+              {trees.map(([k]) => <option key={k} value={k}>{treeLabel(s, k)}</option>)}
+            </select>
+          )}
         </div>
         <LayerTree root={shown} s={s} selected={selectedNode} onSelect={onSelectNode} onToggle={(id) => update(toggleLayer(s, id), 'hiddenLayers')} />
       </div>
@@ -129,7 +140,7 @@ function FreeformSettings({ section, onChange, ctx, device, selectedNode, onSele
   )
 }
 
-type FFS = FS & { texts: Record<string, RichText>; images: Record<string, ImageValue>; links: Record<string, LinkValue> }
+type FFS = FS & { texts: Record<string, RichText>; images: Record<string, ImageValue>; links: Record<string, LinkValue>; videos?: Record<string, LayerVideo> }
 const KIND_ICON = { frame: Square, text: Type, image: ImageIcon, vector: Shapes } as const
 
 function LayerTree({ root, s, selected, onSelect, onToggle }: { root: IRNode; s: FS; selected: string | null; onSelect: (id: string | null) => void; onToggle: (id: string) => void }) {
@@ -189,6 +200,7 @@ function LayerInspector({ at, s, ctx, update, onSelect }: { at: LayerLocation; s
   const hidden = (s.hiddenLayers ?? []).includes(n.id)
   const style: Record<string, unknown> = s.styles?.[n.id] ?? {}
   const img = s.images?.[n.id]
+  const video = s.videos?.[n.id]
   const structural = (next: FS | null, select?: string | null) => { if (!next) return; update(next, treeField(key)); if (select !== undefined) onSelect(select) }
   const flowOnly = flow ? undefined : 'Only layers inside an auto layout frame can be moved or duplicated'
   return (
@@ -216,6 +228,20 @@ function LayerInspector({ at, s, ctx, update, onSelect }: { at: LayerLocation; s
             <Button type="button" size="sm" variant="outline" onClick={() => setPicking(true)}>Replace</Button>
           </div>
           <MediaPicker open={picking} onClose={() => setPicking(false)} onPick={(a) => update({ ...s, images: { ...s.images, [n.id]: { url: a.url, alt: a.alt, decorative: false, width: a.width, height: a.height, assetId: a.id } } }, 'images')} />
+        </div>
+      )}
+      {n.kind !== 'text' && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium">Video</div>
+          <p className="text-[11px] text-muted-foreground">Plays over this layer, cropped like an image fill (for example a hero background).</p>
+          <VideoField value={video?.url ?? ''} onChange={(url) => update({ ...s, videos: url ? { ...s.videos, [n.id]: { autoplay: true, loop: true, controls: false, ...video, url } } : Object.fromEntries(Object.entries(s.videos ?? {}).filter(([k]) => k !== n.id)) }, 'videos')} />
+          {video && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              {(['autoplay', 'loop', 'controls'] as const).map((k) => (
+                <label key={k} className="flex items-center gap-1.5 capitalize"><Switch checked={!!video[k]} onCheckedChange={(v) => update({ ...s, videos: { ...s.videos, [n.id]: { ...video, [k]: v } } }, 'videos')} />{k === 'controls' ? 'Show controls' : k}</label>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <div className="space-y-1.5">

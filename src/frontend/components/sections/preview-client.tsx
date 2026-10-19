@@ -18,7 +18,8 @@ class SectionBoundary extends Component<{ children: ReactNode; name: string }, {
   render() { return this.state.failed ? <div className="border border-dashed border-red-300 p-4 text-sm text-red-700">“{this.props.name}” could not be displayed with these settings.</div> : this.props.children }
 }
 
-export type PreviewMessage = { type: 'nexecoms:preview'; sections: SectionInstance[]; selectedId?: string | null; selectedNodeId?: string | null }
+/** scene: scroll story scene to show ('@' = the first), chosen in the editor's layer panel. */
+export type PreviewMessage = { type: 'nexecoms:preview'; sections: SectionInstance[]; selectedId?: string | null; selectedNodeId?: string | null; scene?: string | null }
 /** Messages from the preview to the editor. */
 export type PreviewEvent =
   | { type: 'nexecoms:preview-ready' }
@@ -37,6 +38,7 @@ export function PreviewClient({ initial, dataUrl }: { initial: RenderedPage; dat
   const [nonce, setNonce] = useState<Record<string, number>>({})
   const pending = useRef<AbortController | null>(null)
   const pickedHere = useRef(false)
+  const shownScene = useRef<string | null>(null)
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
@@ -45,6 +47,12 @@ export function PreviewClient({ initial, dataUrl }: { initial: RenderedPage; dat
       if (msg?.type !== 'nexecoms:preview' || !Array.isArray(msg.sections)) return
       setSelected(msg.selectedId ?? null)
       setSelectedNode(msg.selectedNodeId ?? null)
+      if (msg.scene && msg.scene !== shownScene.current) {
+        // Kept on window for scroll stories that mount later; the event switches those already shown.
+        shownScene.current = msg.scene
+        ;(window as { __figmaScene?: string }).__figmaScene = msg.scene
+        setTimeout(() => window.dispatchEvent(new CustomEvent('figma:scene', { detail: msg.scene })), 0) // after the render
+      }
       setPage((p) => ({ ...p, sections: msg.sections.filter((s) => !s.hidden) }))
       pending.current?.abort()
       const ctrl = new AbortController()

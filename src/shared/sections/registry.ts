@@ -2,7 +2,7 @@
 // in src/frontend/components/sections (one file per type, loaded on demand). Shared by the mapping engine,
 // admin editor and storefront renderer.
 import { z } from 'zod'
-import { f, layerStyleSchema, rt, styleFields } from './fields'
+import { f, layerStyleSchema, layerVideoSchema, rt, styleFields } from './fields'
 
 export const SECTION_TYPES = [
   'announcement-bar', 'header', 'footer', 'hero', 'hero-slideshow', 'image-with-text', 'rich-text', 'feature-grid',
@@ -59,7 +59,7 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
     allowedPageTypes: CONTENT,
     settings: z.object({
       eyebrow: f.text('Eyebrow'), title: f.text('Heading', 'Welcome'), headingLevel: f.heading('Heading level', 'h1'), subtitle: f.richtext('Text'),
-      image: f.image('Image'), layout: f.select('Layout', ['background', 'split-left', 'split-right'] as const, 'background', { background: 'Image behind text', 'split-left': 'Image left', 'split-right': 'Image right' }),
+      image: f.image('Image'), video: f.video('Background video (plays muted, on loop)'), layout: f.select('Layout', ['background', 'split-left', 'split-right'] as const, 'background', { background: 'Image behind text', 'split-left': 'Image left', 'split-right': 'Image right' }),
       minHeight: f.range('Minimum height', 200, 1000, 520, 20, 'px'), overlay: f.range('Image overlay', 0, 90, 30, 5, '%'),
       ...ctaFields, secondaryLabel: f.text('Second button label'), secondaryLink: f.link('Second button link'), ...styleFields,
     }),
@@ -191,6 +191,9 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
       label: z.string().max(120).default(''),
       hiddenLayers: z.array(z.string().max(100)).max(5000).default([]),
       styles: z.record(z.string().max(100), layerStyleSchema).default({}),
+      videos: z.record(z.string().max(100), layerVideoSchema).default({}),
+      // Scroll story: ids (in variants) of the screens the page smart-animates through on scroll, in order.
+      scenes: z.array(z.string().max(100)).max(40).default([]),
       tree: z.any(),
       trees: z.partialRecord(z.enum(['tablet', 'mobile']), z.any()).default({}),
       variants: z.record(z.string(), z.any()).default({}),

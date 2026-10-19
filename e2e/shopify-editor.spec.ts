@@ -45,6 +45,7 @@ test('exact Figma page edits like a Shopify theme', async ({ page }) => {
   await expect(list.getByRole('listitem')).toHaveCount(6)
   for (const name of ['Promo', 'Section/hero', 'Why choose us', 'Best sellers', 'Questions', 'Collage']) await expect(list.getByText(name, { exact: true })).toBeVisible()
   const preview = page.frameLocator('iframe[title="Page preview"]')
+  await expect(page.locator('iframe[title="Page preview"][data-ready]')).toBeAttached() // hydrated: clicks select
   await expect(preview.locator('[data-section-type="freeform"]')).toHaveCount(6)
   await expect(preview.getByRole('heading', { level: 1 })).toHaveCount(1)
 

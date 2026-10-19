@@ -143,6 +143,14 @@ implementation choices:
   reorder; the inspector edits text, link, image and per-layer style overrides (`styles`, validated by
   `layerStyleSchema`). The preview iframe outlines on hover, selects on click (`nexecoms:select`) and edits text in
   place on double-click (`nexecoms:edit-text`).
+- **Scroll stories** (`mergeScrollStories` in `pipeline.ts`): exact-layout screens with the same title that the
+  prototype links with ↓/↑ key "Navigate to" interactions (a missed ↓ destination is bridged to the next unlinked
+  screen) become one page; the other screens are `scenes` (variants of the page root with `scroll-down`/`scroll-up`
+  interactions). `FigmaVariants` steps through them on wheel, swipe and arrow/Page/Space keys at the scene's edge,
+  with the prototype's smart animate, locked while it runs. Installed imports can be rebuilt from the stored snapshot.
+- **Videos**: `videos` on freeform layers (and `video` on the hero) play muted on loop over the layer. Uploads go from
+  the browser straight to Cloudinary with a signature from `POST /api/design/assets/video/sign`; the server reads the
+  resource back before registering it as an `Asset` (`video/*`). The local driver accepts the file directly.
 - **Responsive overrides**: numeric/layout keys become per-breakpoint CSS variables; text and images use
   breakpoint-specific spans and `<picture>` sources.
 - **Caching**: in-process memo keyed `tenant:{id}:page:{slug}:v{versionId}`, cleared on publish (no Redis).

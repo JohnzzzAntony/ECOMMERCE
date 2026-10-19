@@ -48,7 +48,8 @@ export type IRTransition = { type: 'smart' | 'dissolve' | 'instant'; duration: n
  * carousels (drag/click) and timed loops (after delay). `to` is the variant's node id in IRDocument.variants.
  */
 export type IRInteraction = {
-  trigger: 'hover' | 'click' | 'press' | 'drag' | 'mouse-enter' | 'mouse-leave' | 'timeout'
+  /** scroll-down/up: a scroll story (frames linked by arrow-key navigation in the prototype), see IRPage.scenes. */
+  trigger: 'hover' | 'click' | 'press' | 'drag' | 'mouse-enter' | 'mouse-leave' | 'timeout' | 'scroll-down' | 'scroll-up'
   delay: number // ms, for timeout
   to: string
   transition: IRTransition
@@ -93,7 +94,12 @@ export type IRWarning = { code: IRWarningCode; nodeId?: string; pageTitle?: stri
 export type IRFrame = { nodeId: string; name: string; device: 'desktop' | 'tablet' | 'mobile'; root: IRNode }
 /** exact: the whole frame is kept as designed (one freeform section per page); sections: mapped to templates. */
 export type PageLayout = 'exact' | 'sections'
-export type IRPage = { title: string; type: string; slug?: string; layout?: PageLayout; frames: IRFrame[] }
+/**
+ * scenes: a scroll story. The prototype shows the desktop frame first, and scrolling down (arrow keys in Figma)
+ * smart-animates to each following frame; the page renders them in place of one another (scroll-down/up
+ * interactions on each scene root).
+ */
+export type IRPage = { title: string; type: string; slug?: string; layout?: PageLayout; frames: IRFrame[]; scenes?: IRFrame[] }
 export type IRDocument = {
   fileKey: string; version: string; pages: IRPage[]; fonts: { family: string; weights: number[]; italic: boolean }[]; warnings: IRWarning[]
   /** Component variants that interactions change to, by node id. */

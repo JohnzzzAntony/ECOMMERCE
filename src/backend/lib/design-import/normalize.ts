@@ -144,7 +144,7 @@ export function easing(e: any, durationMs: number): string {
   return 'ease'
 }
 
-function transition(t: any): IRTransition {
+export function transition(t: any): IRTransition {
   if (!t) return { type: 'instant', duration: 0, easing: 'linear' }
   const duration = Math.min(20_000, Math.max(0, Math.round((Number(t.duration) || 0) * 1000)))
   const type = t.type === 'SMART_ANIMATE' ? 'smart' : duration ? 'dissolve' : 'instant'
@@ -167,6 +167,42 @@ function interactions(n: FigmaNode): IRInteraction[] {
     }
   }
   return out
+}
+
+// Keys a scroll story is navigated with in a Figma prototype: ↓ PageDown Space (next) and ↑ PageUp (previous).
+const NEXT_KEYS = new Set([40, 34, 32]), PREV_KEYS = new Set([38, 33])
+
+/**
+ * "Navigate to" destinations of key-press interactions in a raw frame, most used first: a prototype that moves
+ * between screens with the arrow keys is a page that scrolls through them (a scroll story).
+ */
+export function keyNavigation(n: FigmaNode, dir: 'next' | 'prev'): { to: string; transition: IRTransition }[] {
+  const keys = dir === 'next' ? NEXT_KEYS : PREV_KEYS
+  const found = new Map<string, { count: number; transition: IRTransition }>()
+  const visit = (x: FigmaNode) => {
+    for (const i of x.interactions ?? []) {
+      if (i?.trigger?.type !== 'ON_KEY_DOWN' || !(i.trigger.keyCodes ?? []).some((k: number) => keys.has(k))) continue
+      for (const a of i.actions ?? []) {
+        if (a?.type !== 'NODE' || (a.navigation ?? 'NAVIGATE') !== 'NAVIGATE' || typeof a.destinationId !== 'string') continue
+        const cur = found.get(a.destinationId)
+        found.set(a.destinationId, { count: (cur?.count ?? 0) + 1, transition: cur?.transition ?? transition(a.transition) })
+      }
+    }
+    x.children?.forEach(visit)
+  }
+  visit(n)
+  return [...found].sort((a, b) => b[1].count - a[1].count).map(([to, v]) => ({ to, transition: v.transition }))
+}
+
+/** Transition of a key-press "Navigate to" whose destination was left empty in Figma (a link the designer missed). */
+export function danglingKeyNavigation(n: FigmaNode, dir: 'next' | 'prev'): IRTransition | null {
+  const keys = dir === 'next' ? NEXT_KEYS : PREV_KEYS
+  for (const i of n.interactions ?? []) {
+    if (i?.trigger?.type !== 'ON_KEY_DOWN' || !(i.trigger.keyCodes ?? []).some((k: number) => keys.has(k))) continue
+    for (const a of i.actions ?? []) if (a?.type === 'NODE' && (a.navigation ?? 'NAVIGATE') === 'NAVIGATE' && !a.destinationId) return transition(a.transition)
+  }
+  for (const c of n.children ?? []) { const t = danglingKeyNavigation(c, dir); if (t) return t }
+  return null
 }
 
 /** Destination node ids of "Change to" interactions anywhere in a raw Figma subtree. */
