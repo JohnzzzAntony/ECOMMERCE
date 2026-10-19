@@ -11,6 +11,7 @@ import { putImage } from './storage'
 export const FIGMA_ASSET_HOSTS = ['figma-alpha-api.s3.us-west-2.amazonaws.com', 'figma-alpha-api.s3.amazonaws.com', 's3-alpha-sig.figma.com', 's3-alpha.figma.com']
 export const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com']
 export const MAX_ASSET_BYTES = 25 * 1024 * 1024
+const MAX_STORED_IMAGE_BYTES = 9.5 * 1024 * 1024
 const MAX_REDIRECTS = 3
 
 export class AssetError extends Error {}
@@ -108,10 +109,17 @@ export async function processImage(input: Buffer): Promise<ProcessedImage> {
   const image = sharp(input, { limitInputPixels: 40_000_000 }).rotate().resize({ width: 4096, height: 4096, fit: 'inside', withoutEnlargement: true })
   const format = mime === 'image/jpeg' ? 'jpeg' : mime === 'image/png' ? 'png' : 'webp'
   const encoded = format === 'jpeg' ? image.jpeg({ quality: 90, mozjpeg: true }) : format === 'png' ? image.png({ compressionLevel: 9 }) : image.webp({ quality: 90 })
-  const { data, info } = await encoded.toBuffer({ resolveWithObject: true })
+  let { data, info } = await encoded.toBuffer({ resolveWithObject: true })
+  let finalFormat: string = format
+  // Storage rejects files over 10 MB (Cloudinary): large lossless PNG photos are re-encoded as WebP.
+  if (data.length > MAX_STORED_IMAGE_BYTES) {
+    ({ data, info } = await sharp(data).webp({ quality: 85, alphaQuality: 90 }).toBuffer({ resolveWithObject: true }))
+    finalFormat = 'webp'
+  }
+  if (data.length > MAX_STORED_IMAGE_BYTES) throw new AssetError('Image is too large to store even after compression')
   const small = await sharp(data).resize(32, 32, { fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   const blurhash = encodeBlurhash(new Uint8ClampedArray(small.data), small.info.width, small.info.height, 4, 3)
-  return { data, mime: `image/${format}`, format: format === 'jpeg' ? 'jpg' : format, width: info.width, height: info.height, blurhash }
+  return { data, mime: `image/${finalFormat}`, format: finalFormat === 'jpeg' ? 'jpg' : finalFormat, width: info.width, height: info.height, blurhash }
 }
 
 export type StoredAsset = { id: string; url: string; width: number; height: number; blurhash: string | null; mime: string }
