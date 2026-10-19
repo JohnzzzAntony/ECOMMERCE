@@ -6,6 +6,8 @@
 // Re-running for an existing email resets its password and re-grants the admin role.
 import { db } from '../src/backend/lib/db'
 import { hashPassword } from '../src/backend/lib/password'
+import { LEGACY_STORE_ID } from '../src/backend/lib/store'
+import { systemDb } from '../src/backend/lib/tenancy'
 
 const email = process.env.ADMIN_EMAIL?.trim().toLowerCase()
 const password = process.env.ADMIN_PASSWORD
@@ -19,5 +21,11 @@ const user = await db.user.upsert({
   update: { password: hashed, role: 'admin', isActive: true },
   create: { email, password: hashed, role: 'admin', isActive: true, firstName: 'Admin' },
 })
-console.log(`Admin ready: ${user.email} (role=${user.role}, active=${user.isActive})`)
+// Store pages, Figma and design settings also need store membership; the admin owns the default store.
+await systemDb().storeMember.upsert({
+  where: { storeId_userId: { storeId: LEGACY_STORE_ID, userId: user.id } },
+  update: { role: 'OWNER' },
+  create: { storeId: LEGACY_STORE_ID, userId: user.id, role: 'OWNER' },
+})
+console.log(`Admin ready: ${user.email} (role=${user.role}, active=${user.isActive}, store owner)`)
 await db.$disconnect()
