@@ -7,7 +7,7 @@ import { f, layerStyleSchema, layerVideoSchema, rt, styleFields } from './fields
 export const SECTION_TYPES = [
   'announcement-bar', 'header', 'footer', 'hero', 'hero-slideshow', 'image-with-text', 'rich-text', 'feature-grid',
   'collection-list', 'product-grid', 'product-detail', 'cart', 'testimonials', 'logo-cloud', 'faq', 'newsletter',
-  'cta-banner', 'video', 'gallery', 'spacer', 'freeform',
+  'cta-banner', 'video', 'gallery', 'spacer', 'freeform', 'custom-code',
 ] as const
 export type SectionType = (typeof SECTION_TYPES)[number]
 
@@ -203,6 +203,18 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
       links: z.record(z.string(), z.any()).default({}),
       headingNodeId: z.string().default(''),
       headingLevel: f.heading('Heading level of the main text', 'h2'),
+    }),
+    hints: { keywords: [] },
+  }),
+  'custom-code': def({
+    type: 'custom-code', name: 'Custom code', icon: 'Code', description: 'Your own HTML, CSS and JavaScript (animations included), written by hand or generated with AI from a screenshot, video or code.',
+    allowedPageTypes: [...CONTENT, 'HEADER', 'FOOTER', 'ANNOUNCEMENT'],
+    // Runs in a sandboxed frame on the storefront (see custom-code.tsx), so its scripts can't reach the store page.
+    settings: z.object({
+      label: f.text('Name', 'Custom section', 120),
+      html: f.code('HTML', 'html', '<section class="demo"><h2>Custom section</h2></section>'),
+      css: f.code('CSS', 'css', '.demo{padding:64px 24px;text-align:center;font-family:system-ui,sans-serif}'),
+      js: f.code('JavaScript', 'js'),
     }),
     hints: { keywords: [] },
   }),

@@ -215,7 +215,7 @@ const FIELDS = ['title', 'subtitle', 'body', 'eyebrow', 'image', 'cta']
 function SectionRow({ importId, pageIndex, section, pageType, disabled, onRemap }: { importId: string; pageIndex: number; section: SectionInstance; pageType: string; disabled: boolean; onRemap: (c: { type?: SectionType; hidden?: boolean; fieldMap?: Record<string, string> }) => void }) {
   const [layers, setLayers] = useState<{ id: string; name: string; kind: string; text?: string }[] | null>(null)
   const [fieldMap, setFieldMap] = useState<Record<string, string>>({})
-  const allowed = SECTION_TYPES.filter((t) => SECTIONS[t].allowedPageTypes.includes(pageType as never))
+  const allowed = SECTION_TYPES.filter((t) => t !== 'custom-code' && SECTIONS[t].allowedPageTypes.includes(pageType as never))
   const openLayers = async () => {
     if (layers) { setLayers(null); return }
     try { setLayers((await adminApi.get<{ layers: typeof layers }>(`/api/design/imports/${importId}/layers?page=${pageIndex}&node=${encodeURIComponent(section.figmaNodeId ?? '')}`)).layers) } catch (e) { toast.error(errorMessage(e)) }

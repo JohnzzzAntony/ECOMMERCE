@@ -242,6 +242,7 @@ export function FieldControl({ meta, value, onChange, ctx }: { meta: FieldMeta; 
     case 'text': return <Input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
     case 'video': return <VideoField value={String(value ?? '')} onChange={onChange} />
     case 'textarea': return <Textarea value={String(value ?? '')} rows={3} onChange={(e) => onChange(e.target.value)} />
+    case 'code': return <Textarea value={String(value ?? '')} rows={meta.language === 'js' ? 8 : 12} spellCheck={false} className="font-mono text-xs" aria-label={meta.label} onChange={(e) => onChange(e.target.value)} />
     case 'richtext': return <RichTextField value={(value as RichText) ?? []} onChange={onChange} />
     case 'image': return <ImageField value={(value as ImageValue) ?? null} onChange={onChange} />
     case 'link': return <LinkField value={(value as LinkValue) ?? { kind: 'none' }} onChange={onChange} ctx={ctx} />

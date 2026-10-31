@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertTriangle, ArrowLeft, CheckCircle2, Copy, Eye, EyeOff, GripVertical, History, LayoutList, Loader2, Monitor, Palette, Plus, Redo2, Rocket, Search as SeoIcon, Smartphone, Tablet, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, Copy, Eye, EyeOff, GripVertical, History, LayoutList, Loader2, Monitor, Palette, Plus, Redo2, Rocket, Search as SeoIcon, Smartphone, Sparkles, Tablet, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/frontend/components/ui/badge'
 import { Button } from '@/frontend/components/ui/button'
@@ -24,6 +24,7 @@ import { AdminApiError, adminApi, errorMessage } from '../admin-api'
 import { SectionSettings, type Device } from './settings-form'
 import { DevicePreview } from './device-preview'
 import { DesignSystemSection } from './design-system'
+import { AiGenerateDialog, type GeneratedCode } from './ai-generate-dialog'
 import type { EditorContext } from './fields'
 
 type PageData = {
@@ -90,7 +91,7 @@ export function PageEditor({ pageId, onBack, pages = [], onOpenPage }: { pageId:
   const [future, setFuture] = useState<SectionInstance[][]>([])
   const [token, setToken] = useState<string | null>(null)
   const [ctx, setCtx] = useState<EditorContext>({ pages: [], tokens: null })
-  const [panel, setPanel] = useState<'none' | 'add' | 'seo' | 'history' | 'publish'>('none')
+  const [panel, setPanel] = useState<'none' | 'add' | 'ai' | 'seo' | 'history' | 'publish'>('none')
   const [rail, setRail] = useState<'sections' | 'theme'>('sections')
   const [checklist, setChecklist] = useState<ChecklistItem[] | null>(null)
   const iframe = useRef<HTMLIFrameElement>(null)
@@ -195,8 +196,8 @@ export function PageEditor({ pageId, onBack, pages = [], onOpenPage }: { pageId:
 
   const pageType = data?.page.type ?? 'PAGE'
   const addable = useMemo(() => Object.values(SECTIONS).filter((d) => d.type !== 'freeform' && d.allowedPageTypes.includes(pageType as never)), [pageType])
-  const addSection = (type: SectionType) => {
-    const s: SectionInstance = { id: newId(), type, figmaNodeId: null, settings: defaultSettings(type), blocks: [], responsive: {}, hidden: false, overriddenFields: [], mappingConfidence: 1 }
+  const addSection = (type: SectionType, settings = defaultSettings(type)) => {
+    const s: SectionInstance = { id: newId(), type, figmaNodeId: null, settings, blocks: [], responsive: {}, hidden: false, overriddenFields: [], mappingConfidence: 1 }
     const at = selected ? sections.findIndex((x) => x.id === selected) + 1 : sections.length
     change([...sections.slice(0, at), s, ...sections.slice(at)]); setSelected(s.id); setPanel('none')
   }
@@ -294,6 +295,7 @@ export function PageEditor({ pageId, onBack, pages = [], onOpenPage }: { pageId:
           </DndContext>
           {!sections.length && <p className="p-2 text-sm text-muted-foreground">No sections yet.</p>}
           <Button variant="outline" size="sm" className="w-full" onClick={() => setPanel('add')}><Plus className="size-4" /> Add section</Button>
+          <Button variant="outline" size="sm" className="w-full" onClick={() => setPanel('ai')}><Sparkles className="size-4" /> Generate with AI</Button>
           {globalRow('FOOTER', 'Footer')}
         </aside>
         )}
@@ -331,6 +333,8 @@ export function PageEditor({ pageId, onBack, pages = [], onOpenPage }: { pageId:
           <div className="grid gap-2 sm:grid-cols-2">{addable.map((d) => <button key={d.type} type="button" onClick={() => addSection(d.type)} className="rounded-md border p-3 text-left hover:border-brand-teal"><div className="font-medium">{d.name}</div><div className="text-xs text-muted-foreground">{d.description}</div></button>)}</div>
         </DialogContent>
       </Dialog>
+
+      <AiGenerateDialog open={panel === 'ai'} onClose={() => setPanel('none')} onResult={(code: GeneratedCode) => addSection('custom-code', code)} />
 
       {panel === 'seo' && <SeoDialog onClose={() => setPanel('none')} page={data.page} onSaved={load} />}
 

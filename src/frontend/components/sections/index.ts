@@ -27,6 +27,7 @@ export const SECTION_COMPONENTS: Record<SectionType, Loader> = {
   gallery: () => import('./gallery'),
   spacer: () => import('./spacer'),
   freeform: () => import('./freeform'),
+  'custom-code': () => import('./custom-code'),
 }
 
 export type { SectionProps }

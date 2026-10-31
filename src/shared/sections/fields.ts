@@ -1,12 +1,13 @@
 // Field types for section settings. Each builder returns a Zod schema carrying editor metadata (`.meta()`), so the
 // admin settings form is generated from the same schema that validates stored page JSON and the storefront render.
-// No field accepts HTML: rich text is structured runs, links are typed, so stored content is safe to render.
+// No field accepts HTML except f.code (custom-code sections), which is rendered only inside a sandboxed frame.
+// Rich text is structured runs and links are typed, so the rest of the stored content is safe to render.
 import { z } from 'zod'
 
 export type Control =
   | 'text' | 'textarea' | 'richtext' | 'image' | 'link' | 'color' | 'select' | 'range' | 'boolean'
-  | 'product' | 'products' | 'collection' | 'links' | 'heading' | 'video'
-export type FieldMeta = { control: Control; label: string; help?: string; options?: { value: string; label: string }[]; min?: number; max?: number; step?: number; unit?: string }
+  | 'product' | 'products' | 'collection' | 'links' | 'heading' | 'video' | 'code'
+export type FieldMeta = { control: Control; label: string; language?: 'html' | 'css' | 'js'; help?: string; options?: { value: string; label: string }[]; min?: number; max?: number; step?: number; unit?: string }
 
 const SAFE_URL = /^(https?:\/\/[^\s<>"']+|mailto:[^\s<>"']+|tel:[+\d\s()-]+|\/[^\s<>"']*|#[\w-]*)$/i
 
@@ -80,6 +81,8 @@ export const f = {
   heading: (label = 'Heading level', def: 'h1' | 'h2' | 'h3' | 'h4' = 'h2') =>
     m(z.enum(['h1', 'h2', 'h3', 'h4', 'p']).default(def), { control: 'heading', label, options: ['h1', 'h2', 'h3', 'h4', 'p'].map((v) => ({ value: v, label: v === 'p' ? 'Not a heading' : v.toUpperCase() })) }),
   video: (label: string) => m(z.string().max(2000).regex(VIDEO_URL).default(''), { control: 'video', label }),
+  /** Source code of a custom-code section; only ever rendered inside a sandboxed frame. */
+  code: (label: string, language: 'html' | 'css' | 'js', def = '') => m(z.string().max(200_000).default(def), { control: 'code', label, language }),
 }
 
 export function fieldMeta(schema: z.ZodType): FieldMeta | undefined {

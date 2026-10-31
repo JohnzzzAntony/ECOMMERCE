@@ -3,7 +3,7 @@
 // Figma re-sync keeps the admin's value unless they accept the Figma one. On tablet/mobile, layout and content keys
 // are saved as responsive overrides.
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, ChevronUp, Copy, Eye, EyeOff, Frame as FrameIcon, Image as ImageIcon, Plus, Scissors, Shapes, Trash2, Type } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, Copy, Eye, EyeOff, Frame as FrameIcon, Image as ImageIcon, Plus, Scissors, Shapes, Sparkles, Trash2, Type } from 'lucide-react'
 import { Button } from '@/frontend/components/ui/button'
 import { Textarea } from '@/frontend/components/ui/textarea'
 import { LAYER_STYLE_FIELDS, fieldMeta, type FieldMeta, type ImageValue, type LayerStyleKey, type LayerVideo, type LinkValue, type RichText } from '@/shared/sections/fields'
@@ -13,6 +13,7 @@ import { plainText, type IRNode } from '@/shared/design-ir'
 import { deleteLayer, duplicateLayer, isFlow, layerTrees, locateLayer, moveLayer, setLayerStyle, toggleLayer, treeField, treeLabel, layerName, type FreeformSettings as FS, type LayerLocation, type TreeKey } from '@/shared/freeform-edit'
 import { FieldControl, FieldRow, LinkField, MediaPicker, VideoField, type EditorContext } from './fields'
 import { Switch } from '@/frontend/components/ui/switch'
+import { AiGenerateDialog, type GeneratedCode } from './ai-generate-dialog'
 
 export type Device = 'desktop' | 'tablet' | 'mobile'
 export const RESPONSIVE_KEYS = new Set(['title', 'subtitle', 'body', 'image', 'layout', 'imagePosition', 'align', 'columns', 'minHeight', 'paddingTop', 'paddingBottom', 'text', 'eyebrow', 'height'])
@@ -49,6 +50,7 @@ export function SectionSettings(props: SectionSettingsProps) {
   const { section, onChange, ctx, device } = props
   const def = SECTIONS[section.type]
   if (section.type === 'freeform') return <FreeformSettings {...props} />
+  if (section.type === 'custom-code') return <CustomCodeSettings {...props} />
   const onField = (key: string, value: unknown | undefined) => {
     if (device !== 'desktop' && RESPONSIVE_KEYS.has(key)) {
       const d = device as 'tablet' | 'mobile'
@@ -61,6 +63,20 @@ export function SectionSettings(props: SectionSettingsProps) {
     <div className="space-y-6">
       <Fields shape={def.settings.shape} values={section.settings} onField={onField} ctx={ctx} device={device} section={section} />
       {def.blocks && <Blocks section={section} onChange={onChange} ctx={ctx} />}
+    </div>
+  )
+}
+
+/** Custom code: the code fields, plus changing the section with AI (instructions, screenshots, video, code). */
+function CustomCodeSettings({ section, onChange, ctx }: SectionSettingsProps) {
+  const [ai, setAi] = useState(false)
+  const onField = (key: string, value: unknown) => onChange({ ...section, settings: { ...section.settings, [key]: value }, overriddenFields: markOverridden(section, key) })
+  return (
+    <div className="space-y-4">
+      <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setAi(true)}><Sparkles className="size-4" /> Change with AI</Button>
+      <Fields shape={SECTIONS['custom-code'].settings.shape} values={section.settings} onField={onField} ctx={ctx} device="desktop" />
+      <AiGenerateDialog open={ai} onClose={() => setAi(false)} current={section.settings as GeneratedCode}
+        onResult={(code) => onChange({ ...section, settings: { ...section.settings, ...code }, overriddenFields: ['label', 'html', 'css', 'js'].reduce((o, k) => (o.includes(k) ? o : [...o, k]), section.overriddenFields) })} />
     </div>
   )
 }

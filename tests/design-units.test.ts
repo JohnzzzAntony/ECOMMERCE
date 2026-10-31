@@ -184,7 +184,7 @@ describe('registry, markup and checklist', () => {
     expect(validateSection(section({ type: 'hero', settings: { ...defaultSettings('hero'), ctaLink: { kind: 'url', url: 'javascript:alert(1)' } } })).ok).toBe(false)
     expect(validateSection(section({ type: 'hero', settings: { ...defaultSettings('hero'), image: { url: 'http://x/y.png', alt: '', decorative: false, width: 1, height: 1 } } })).ok).toBe(false)
     expect(validateSection({ id: 'x', type: 'raw-html', settings: {} }).ok).toBe(false)
-    expect(Object.keys(SECTIONS)).toHaveLength(21)
+    expect(Object.keys(SECTIONS)).toHaveLength(22)
   })
   test('rich text markup round-trips without HTML', () => {
     const rt = fromMarkup('Hello **bold** and *it* with [a link](/pages/about)\n\n- one\n- two')
