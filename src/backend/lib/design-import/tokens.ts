@@ -71,8 +71,12 @@ export function extractTokens(doc: IRDocument): { tokens: DesignTokens; warnings
     entry.usage += weight; entry[kind] += weight
   }
 
+  const frameFills = new Map<string, { rgb: Rgb; n: number }>()
   for (const page of doc.pages) {
     for (const frame of page.frames) {
+      const fill = backgroundOf([frame.root]) ?? { r: 255, g: 255, b: 255 }
+      const f = frameFills.get(hex({ ...fill, a: 1 })) ?? { rgb: fill, n: 0 }
+      f.n++; frameFills.set(hex({ ...fill, a: 1 }), f)
       const chain: IRNode[] = []
       const visit = (n: IRNode) => {
         chain.push(n)
@@ -115,15 +119,20 @@ export function extractTokens(doc: IRDocument): { tokens: DesignTokens; warnings
   const named = kept.filter((c) => c.name)
   const observed = kept.filter((c) => !c.name).sort((a, b) => b.usage - a.usage)
   const roles = new Map<ColorUse, string>()
-  const byArea = [...observed].sort((a, b) => b.area - a.area)[0]
-  const byText = [...observed].sort((a, b) => b.text - a.text)[0]
-  if (byArea?.area) roles.set(byArea, 'Background')
-  if (byText?.text && byText !== byArea) roles.set(byText, 'Text')
-  const accent = observed.filter((c) => !roles.has(c) && saturation(c.rgb) > 0.35).sort((a, b) => b.usage - a.usage)[0]
+  // The storefront paints the page with Background/Text, so they come from the page frames' own fill (not the
+  // largest dark area, e.g. a footer) and the most used text colour that is readable on it.
+  const pageBg = [...frameFills.values()].sort((a, b) => b.n - a.n)[0]?.rgb ?? { r: 255, g: 255, b: 255 }
+  const pageText = kept.filter((c) => c.text && passesAA(contrastRatio(c.rgb, pageBg))).sort((a, b) => b.text - a.text)[0]
+  const roleTokens = [
+    { name: 'Background', value: hex({ ...pageBg, a: 1 }), source: 'observed' as const, usage: 0 },
+    ...(pageText ? [{ name: 'Text', value: pageText.value, source: 'observed' as const, usage: pageText.text }] : []),
+  ]
+  const accent = observed.filter((c) => saturation(c.rgb) > 0.35).sort((a, b) => b.usage - a.usage)[0]
   if (accent) roles.set(accent, 'Primary')
   let n = 1
   const colorTokens = [
     ...named.map((c) => ({ name: c.name!, value: c.value, source: 'style' as const, usage: c.usage })),
+    ...roleTokens,
     ...observed.slice(0, 24).map((c) => ({ name: roles.get(c) ?? `Color ${n++}`, value: c.value, source: 'observed' as const, usage: c.usage })),
   ]
   const seenNames = new Set<string>()

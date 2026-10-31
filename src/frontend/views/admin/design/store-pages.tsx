@@ -27,6 +27,12 @@ export function StorePagesSection() {
 
   const load = useCallback(() => adminApi.get<PageRow[]>('/api/design/pages').then((p) => { setPages(p); setError(null) }).catch((e) => setError(errorMessage(e))), [])
   useEffect(() => { load() }, [load])
+  // Keep the open page in the URL so a reload returns to the full-screen editor.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (editing) url.searchParams.set('page', editing); else url.searchParams.delete('page')
+    window.history.replaceState(null, '', url)
+  }, [editing])
 
   const create = async () => {
     try {
