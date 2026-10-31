@@ -1,7 +1,7 @@
 'use client'
 // Review & install (Phase 8): progress, Figma render next to the live preview, sections with confidence, type and
 // layer remapping, warnings, install. Re-sync imports show the diff with per-section accept/reject (Phase 11).
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, ArrowLeft, CheckCircle2, Download, Loader2, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/frontend/components/ui/badge'
@@ -12,6 +12,7 @@ import type { IRWarning } from '@/shared/design-ir'
 import { DEVICES, PAGE_LAYOUTS, PAGE_LAYOUT_LABELS, PAGE_TYPES, PAGE_TYPE_LABELS, defaultLayout, importPlanSchema, type PageLayout, type PlanPage } from '@/shared/design-plan'
 import { slugify } from '@/shared/slug'
 import { adminApi, errorMessage } from '../admin-api'
+import { DEVICE_SIZES, DevicePreview } from './device-preview'
 
 type MappedPage = { title: string; type: string; slug?: string; frames: { device: string; nodeId: string; name?: string }[]; sections: SectionInstance[] }
 type ImportDetail = {
@@ -20,26 +21,7 @@ type ImportDetail = {
   plan: PlanPage[]
   file: { name: string; fileKey: string; branchKey: string | null }
 }
-const PREVIEW_WIDTHS = { desktop: 1280, tablet: 820, mobile: 390 } as const
 
-/** The preview at the device's real width (so the right Figma frame shows), scaled down to fit the card. */
-function DevicePreview({ src, width, height = 640 }: { src: string; width: number; height?: number }) {
-  const box = useRef<HTMLDivElement>(null)
-  const [available, setAvailable] = useState(width)
-  useEffect(() => {
-    const el = box.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setAvailable(el.clientWidth))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  const scale = Math.min(1, available / width)
-  return (
-    <div ref={box} className="overflow-hidden rounded border bg-white" style={{ height }}>
-      <iframe title="Preview" src={src} style={{ width, height: height / scale, transform: `scale(${scale})`, transformOrigin: 'top left' }} className="block border-0" />
-    </div>
-  )
-}
 const STAGE_LABEL: Record<string, string> = { QUEUED: 'Waiting to start', FETCHING: 'Reading selected pages from Figma', NORMALIZING: 'Reading design structure', TOKENS: 'Reading colors and fonts', MAPPING: 'Preparing editable sections', ASSETS: 'Copying images and fonts', REVIEW: 'Ready to preview', INSTALLED: 'Installed as drafts', FAILED: 'Import needs attention' }
 const WARNING_HELP: Record<string, string> = {
   NO_AUTO_LAYOUT: 'Use auto layout in Figma, or change the section type here.', MISSING_FONT: 'Upload the font in Design system → Fonts.',
@@ -57,7 +39,7 @@ export function ImportReview({ importId, onBack }: { importId: string; onBack: (
   const [token, setToken] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
-  const [device, setDevice] = useState<keyof typeof PREVIEW_WIDTHS>('desktop')
+  const [device, setDevice] = useState<keyof typeof DEVICE_SIZES>('desktop')
 
   const load = useCallback(() => adminApi.get<ImportDetail>(`/api/design/imports/${importId}`).then(setJob).catch((e) => toast.error(errorMessage(e))), [importId])
   useEffect(() => { load(); adminApi.get<{ token: string }>(`/api/design/imports/${importId}/preview-token`).then((t) => setToken(t.token)).catch(() => {}) }, [importId, load])
@@ -137,9 +119,9 @@ export function ImportReview({ importId, onBack }: { importId: string; onBack: (
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle className="text-sm">Preview</CardTitle>
-              <div className="flex gap-1">{(Object.keys(PREVIEW_WIDTHS) as (keyof typeof PREVIEW_WIDTHS)[]).map((d) => <Button key={d} size="sm" variant={d === device ? 'default' : 'outline'} className="h-7 capitalize" onClick={() => setDevice(d)}>{d}</Button>)}</div>
+              <div className="flex gap-1">{(Object.keys(DEVICE_SIZES) as (keyof typeof DEVICE_SIZES)[]).map((d) => <Button key={d} size="sm" variant={d === device ? 'default' : 'outline'} className="h-7 capitalize" onClick={() => setDevice(d)}>{d}</Button>)}</div>
             </CardHeader>
-            <CardContent>{token && <DevicePreview key={`${pageIndex}-${previewKey}-${device}`} width={PREVIEW_WIDTHS[device]} src={`/design-preview/import/${importId}/${pageIndex}?token=${encodeURIComponent(token)}`} />}</CardContent>
+            <CardContent>{token && <DevicePreview key={`${pageIndex}-${previewKey}-${device}`} device={device} title="Preview" className="h-[640px]" src={`/design-preview/import/${importId}/${pageIndex}?token=${encodeURIComponent(token)}`} />}</CardContent>
           </Card>
         </div>
       )}
@@ -233,7 +215,7 @@ const FIELDS = ['title', 'subtitle', 'body', 'eyebrow', 'image', 'cta']
 function SectionRow({ importId, pageIndex, section, pageType, disabled, onRemap }: { importId: string; pageIndex: number; section: SectionInstance; pageType: string; disabled: boolean; onRemap: (c: { type?: SectionType; hidden?: boolean; fieldMap?: Record<string, string> }) => void }) {
   const [layers, setLayers] = useState<{ id: string; name: string; kind: string; text?: string }[] | null>(null)
   const [fieldMap, setFieldMap] = useState<Record<string, string>>({})
-  const allowed = SECTION_TYPES.filter((t) => SECTIONS[t].allowedPageTypes.includes(pageType as never))
+  const allowed = SECTION_TYPES.filter((t) => t !== 'custom-code' && SECTIONS[t].allowedPageTypes.includes(pageType as never))
   const openLayers = async () => {
     if (layers) { setLayers(null); return }
     try { setLayers((await adminApi.get<{ layers: typeof layers }>(`/api/design/imports/${importId}/layers?page=${pageIndex}&node=${encodeURIComponent(section.figmaNodeId ?? '')}`)).layers) } catch (e) { toast.error(errorMessage(e)) }

@@ -13,7 +13,7 @@ import { signPreviewToken, verifyPreviewToken } from '../src/backend/lib/preview
 import { fromMarkup, toMarkup } from '../src/shared/sections/markup'
 import { SECTIONS, SECTION_TYPES, defaultSettings, validateSection, type SectionInstance } from '../src/shared/sections/registry'
 import { prePublishChecklist } from '../src/shared/store-pages'
-import { contrastIssues, contrastRatio, designTokensSchema, EMPTY_TOKENS, tokensCss } from '../src/shared/design-tokens'
+import { contrastIssues, contrastRatio, designTokensSchema, EMPTY_TOKENS, hexToRgb, tokensCss } from '../src/shared/design-tokens'
 import type { ImportPlan } from '../src/shared/design-plan'
 
 process.env.AUTH_SECRET ??= 'test-secret-that-is-at-least-32-characters-long'
@@ -79,6 +79,11 @@ describe('design tokens', () => {
     expect(warnings.some((w) => w.code === 'LOW_CONTRAST' && w.nodeId === '16:2')).toBe(true)
     expect(contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 })).toBeCloseTo(21, 0)
     expect(contrastIssues({ ...EMPTY_TOKENS, colors: [{ name: 'Text', value: '#cccccc', source: 'observed', usage: 1 }, { name: 'Background', value: '#ffffff', source: 'observed', usage: 1 }] })).toHaveLength(1)
+  })
+  test('page Background/Text roles come from the frame fill and stay readable', () => {
+    const bg = tokens.colors.find((c) => c.name === 'Background')!, text = tokens.colors.find((c) => c.name === 'Text')
+    expect(bg).toBeDefined()
+    if (text) expect(contrastRatio(hexToRgb(bg.value), hexToRgb(text.value))).toBeGreaterThanOrEqual(4.5)
   })
   test('CSS variables are generated and values are validated', () => {
     const css = tokensCss(tokens)
@@ -179,7 +184,7 @@ describe('registry, markup and checklist', () => {
     expect(validateSection(section({ type: 'hero', settings: { ...defaultSettings('hero'), ctaLink: { kind: 'url', url: 'javascript:alert(1)' } } })).ok).toBe(false)
     expect(validateSection(section({ type: 'hero', settings: { ...defaultSettings('hero'), image: { url: 'http://x/y.png', alt: '', decorative: false, width: 1, height: 1 } } })).ok).toBe(false)
     expect(validateSection({ id: 'x', type: 'raw-html', settings: {} }).ok).toBe(false)
-    expect(Object.keys(SECTIONS)).toHaveLength(21)
+    expect(Object.keys(SECTIONS)).toHaveLength(22)
   })
   test('rich text markup round-trips without HTML', () => {
     const rt = fromMarkup('Hello **bold** and *it* with [a link](/pages/about)\n\n- one\n- two')
@@ -199,6 +204,16 @@ describe('registry, markup and checklist', () => {
     expect(items.filter((i) => i.level === 'error').map((i) => i.code).sort()).toEqual(['BROKEN_LINK', 'EMPTY_LINK', 'MISSING_ALT', 'MULTIPLE_H1'])
     expect(items.filter((i) => i.level === 'warning').map((i) => i.code).sort()).toEqual(['FREEFORM', 'LOW_CONTRAST'])
     expect(prePublishChecklist([section({ type: 'hero', settings: { ...defaultSettings('hero'), image: { ...img, decorative: true } } })], new Set())).toEqual([])
+  })
+  test('links to draft pages warn once instead of blocking', () => {
+    const link = { kind: 'page', slug: 'plp' }
+    const items = prePublishChecklist([section({ type: 'rich-text', settings: { ...defaultSettings('rich-text'), ctaLabel: 'Go', ctaLink: link, secondaryLabel: 'Go', secondaryLink: link } })], new Set(['']), [], new Set(['plp']))
+    expect(items.map((i) => [i.level, i.code])).toEqual([['warning', 'BROKEN_LINK']])
+  })
+  test('Figma sections with a mobile frame do not warn about small screens', () => {
+    const ff = (trees: object) => section({ type: 'freeform', settings: { ...defaultSettings('freeform'), tree: null, trees } })
+    expect(prePublishChecklist([ff({})], new Set()).map((i) => i.code)).toEqual(['FREEFORM'])
+    expect(prePublishChecklist([ff({ mobile: { id: 'm' } })], new Set())).toEqual([])
   })
 })
 

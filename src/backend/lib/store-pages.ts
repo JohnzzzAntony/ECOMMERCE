@@ -45,18 +45,14 @@ export async function saveDraft(ctx: Ctx, page: StorePage, sections: unknown, re
   return { versionId: draft.id, version: draft.version, revision: revision + 1, sections: clean }
 }
 
-export async function publishedSlugs(ctx: Ctx) {
-  const pages = await ctx.db.storePage.findMany({ where: { publishedVersionId: { not: null } } })
-  return new Set(pages.map((p) => p.slug))
-}
-
 export async function checklistFor(ctx: Ctx, page: StorePage, sections: unknown[]): Promise<ChecklistItem[]> {
-  const slugs = await publishedSlugs(ctx)
+  const all = await ctx.db.storePage.findMany({ select: { slug: true, publishedVersionId: true } })
+  const slugs = new Set(all.filter((p) => p.publishedVersionId).map((p) => p.slug))
   slugs.add(page.slug) // the page being published counts as existing
   const ds = await ctx.db.designSystem.findFirst({ where: { status: 'ACTIVE' } })
   const tokens = ds ? designTokensSchema.safeParse(ds.tokens) : null
   const contrast = tokens?.success ? contrastIssues(tokens.data).map((c) => `Text colour “${c.text}” on “${c.background}” has contrast ${c.ratio}:1 (AA needs 4.5:1).`) : []
-  return prePublishChecklist(sections, slugs, contrast)
+  return prePublishChecklist(sections, slugs, contrast, new Set(all.map((p) => p.slug)))
 }
 
 /** Publishes the draft (or the given version, for rollback) as a new immutable version. */

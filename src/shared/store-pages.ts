@@ -64,7 +64,7 @@ function walkSettings(value: unknown, path: string, w: Walk, label = '') {
  * Blocking: missing alt text, more than one h1, links with a label but no destination, links to pages that don't
  * exist (or aren't published), invalid sections. Warnings: freeform sections and low-contrast text colours.
  */
-export function prePublishChecklist(sections: unknown[], existingSlugs: Set<string>, contrastWarnings: string[] = []): ChecklistItem[] {
+export function prePublishChecklist(sections: unknown[], existingSlugs: Set<string>, contrastWarnings: string[] = [], draftSlugs = new Set<string>()): ChecklistItem[] {
   const items: ChecklistItem[] = []
   let h1 = 0
   for (const raw of sections) {
@@ -74,12 +74,17 @@ export function prePublishChecklist(sections: unknown[], existingSlugs: Set<stri
     if (s.hidden) continue
     const name = sectionDef(s.type)?.name ?? s.type
     if (s.settings.headingLevel === 'h1' && (s.settings.title || s.type === 'freeform' || s.blocks.length)) h1++
-    if (s.type === 'freeform') items.push({ level: 'warning', code: 'FREEFORM', sectionId: s.id, message: `“${name}” keeps the Figma layout and won’t adapt as well to small screens. Consider choosing a section type.` })
+    // A Figma section imported with its own mobile frame does adapt to small screens.
+    if (s.type === 'freeform' && !(s.settings.trees as { mobile?: unknown } | undefined)?.mobile) items.push({ level: 'warning', code: 'FREEFORM', sectionId: s.id, message: `“${name}” keeps the Figma layout and won’t adapt as well to small screens. Consider choosing a section type.` })
     const walk: Walk = {
       onImage: (img) => { if (img.url && !img.decorative && !img.alt?.trim()) items.push({ level: 'error', code: 'MISSING_ALT', sectionId: s.id, message: `An image in “${name}” needs alt text (or mark it decorative).` }) },
       onLink: (link, label) => {
         if (link.kind === 'none' && label.trim()) items.push({ level: 'error', code: 'EMPTY_LINK', sectionId: s.id, message: `The button or link “${label}” in “${name}” has no destination.` })
-        if (link.kind === 'page' && !existingSlugs.has(link.slug)) items.push({ level: 'error', code: 'BROKEN_LINK', sectionId: s.id, message: `A link in “${name}” points to a page that doesn’t exist or isn’t published (${link.slug || 'home'}).` })
+        // Pages imported together link to each other, so a link to a not-yet-published page must not block publishing.
+        if (link.kind === 'page' && !existingSlugs.has(link.slug)) {
+          if (draftSlugs.has(link.slug)) items.push({ level: 'warning', code: 'BROKEN_LINK', sectionId: s.id, message: `A link in “${name}” points to a page that isn’t published yet (${link.slug || 'home'}). Publish it too, or the link will show “not found”.` })
+          else items.push({ level: 'error', code: 'BROKEN_LINK', sectionId: s.id, message: `A link in “${name}” points to a page that doesn’t exist (${link.slug || 'home'}).` })
+        }
         if ((link.kind === 'product' || link.kind === 'collection') && !link.slug) items.push({ level: 'error', code: 'EMPTY_LINK', sectionId: s.id, message: `A ${link.kind} link in “${name}” has no ${link.kind} selected.` })
       },
     }
@@ -91,7 +96,8 @@ export function prePublishChecklist(sections: unknown[], existingSlugs: Set<stri
   }
   if (h1 > 1) items.push({ level: 'error', code: 'MULTIPLE_H1', message: `This page has ${h1} H1 headings. Keep one and set the others to H2.` })
   for (const w of contrastWarnings) items.push({ level: 'warning', code: 'LOW_CONTRAST', message: w })
-  return items
+  const seen = new Set<string>()
+  return items.filter((i) => { const k = `${i.sectionId}|${i.message}`; return !seen.has(k) && !!seen.add(k) })
 }
 
 export const richTextToPlain = (v: RichText | undefined) => (v ?? []).map((p) => p.runs.map((r) => r.text).join('')).join(' ')
