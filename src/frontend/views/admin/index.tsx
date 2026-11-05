@@ -24,8 +24,6 @@ import { ProductsSection } from './products'
 import { SECTIONS, type SectionKey } from './sections'
 import { SettingsSection } from './settings'
 import { ThemesSection } from './themes'
-import { FigmaSection } from './figma'
-import { DesignImportSection } from './design-import'
 import { StorePagesSection } from './design/store-pages'
 import { DesignSystemSection, MediaLibrarySection } from './design/design-system'
 import { initials } from './shared'
@@ -169,7 +167,7 @@ function Sidebar({ sections, section, onSelect }: { sections: typeof SECTIONS; s
 }
 
 function AdminLayout({ user }: { user: User }) {
-  // ?section=<key> opens a section directly (used by the Figma OAuth callback and notification emails).
+  // ?section=<key> opens a section directly (used by links and notification emails).
   const [section, setSection] = useState<SectionKey>(() => {
     const key = typeof window === 'undefined' ? null : new URL(window.location.href).searchParams.get('section')
     return SECTIONS.some((s) => s.key === key) ? key as SectionKey : 'dashboard'
@@ -204,8 +202,6 @@ function AdminLayout({ user }: { user: User }) {
       case 'themes': return themesOn ? <ThemesSection /> : <SectionNotFound />
       case 'pages': return <PagesSection />
       case 'navigation': return <NavigationSection />
-      case 'figma': return <FigmaSection />
-      case 'designs': return <DesignImportSection />
       case 'store-pages': return <StorePagesSection />
       case 'design-system': return <DesignSystemSection />
       case 'media-library': return <MediaLibrarySection />

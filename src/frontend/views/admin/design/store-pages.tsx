@@ -1,5 +1,5 @@
 'use client'
-// Store pages built from Figma imports (or from scratch): list, create, open in the page editor.
+// Store pages: list, create, open in the page editor.
 import { useCallback, useEffect, useState } from 'react'
 import { ExternalLink, FilePlus2, Loader2, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
@@ -53,7 +53,7 @@ export function StorePagesSection() {
         <Button onClick={() => setCreating(true)}><FilePlus2 className="size-4" /> New page</Button>
       </CardHeader>
       <CardContent>
-        {pages.length === 0 ? <p className="text-sm text-muted-foreground">No pages yet. Import a Figma design or create a page.</p> : (
+        {pages.length === 0 ? <p className="text-sm text-muted-foreground">No pages yet. Create a page to get started.</p> : (
           <ul className="divide-y rounded-md border">
             {pages.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-3 p-3 text-sm">

@@ -471,12 +471,7 @@ model Store {
   updatedAt     DateTime     @updatedAt
 
   members          StoreMember[]
-  figmaConnection  FigmaConnection?
-  figmaOAuthStates FigmaOAuthState[]
   auditLogs        AuditLog[]
-  figmaFiles       FigmaFile[]
-  designImports    DesignImport[]
-  sectionMappings  SectionMapping[]
   designSystems    DesignSystem[]
   fonts            Font[]
   assets           Asset[]
@@ -495,7 +490,7 @@ enum StoreRole {
   VIEWER
 }
 
-// A user's role in a store. OWNER/ADMIN manage connections; EDITOR imports and edits designs; VIEWER reads.
+// A user's role in a store. OWNER/ADMIN manage the store; EDITOR edits designs; VIEWER reads.
 model StoreMember {
   id        String    @id @default(cuid())
   storeId   String
@@ -510,61 +505,11 @@ model StoreMember {
   @@index([userId])
 }
 
-enum FigmaAuthType {
-  OAUTH
-  PAT
-}
-
-enum FigmaConnectionStatus {
-  ACTIVE
-  NEEDS_REAUTH
-}
-
-// The store's Figma account. Tokens are envelope-encrypted (src/backend/lib/figma/crypto.ts) with the key
-// version in keyVersion; they never leave the server.
-model FigmaConnection {
-  id              String                @id @default(cuid())
-  storeId         String                @unique
-  figmaUserId     String
-  handle          String
-  email           String?
-  authType        FigmaAuthType
-  accessTokenEnc  String
-  refreshTokenEnc String?
-  keyVersion      Int
-  expiresAt       DateTime? // null for personal access tokens (expiry unknown to the API)
-  scopes          String                @default("")
-  status          FigmaConnectionStatus @default(ACTIVE)
-  createdBy       String
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-
-  store Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  files FigmaFile[]
-}
-
-// Pending OAuth authorization: single-use, 10-minute TTL, bound to store + user + session.
-// id is the SHA-256 of the state sent to Figma, so a database read cannot replay a flow.
-model FigmaOAuthState {
-  id           String   @id
-  storeId      String
-  userId       String
-  sessionHash  String
-  codeVerifier String
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@index([expiresAt])
-}
-
 model AuditLog {
   id         String   @id @default(cuid())
   storeId    String
   actorId    String?
-  action     String // e.g. figma.connect, figma.disconnect, figma.reauth_required
+  action     String // e.g. design.tokens.edit, design.ai-generate
   entityType String
   entityId   String?
   diff       Json     @default("{}")
@@ -574,98 +519,6 @@ model AuditLog {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@index([storeId, createdAt])
-}
-
-// A Figma file (or branch) a store has imported from. fileKey is the main file; branchKey is "" for the main file.
-model FigmaFile {
-  id           String   @id @default(cuid())
-  storeId      String
-  connectionId String?
-  fileKey      String
-  branchKey    String   @default("")
-  name         String
-  version      String
-  lastModified DateTime
-  // Re-sync: Figma webhook (v2) for this file, its passcode (SHA-256) and the newest version seen remotely.
-  webhookId           String?
-  webhookPasscodeHash String?
-  latestVersion       String?
-  lastCheckedAt       DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  store      Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  connection FigmaConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
-  imports    DesignImport[]
-
-  @@unique([storeId, fileKey, branchKey])
-}
-
-enum DesignImportStatus {
-  QUEUED
-  FETCHING
-  NORMALIZING
-  TOKENS
-  MAPPING
-  ASSETS
-  REVIEW
-  INSTALLED
-  FAILED
-}
-
-// One import of selected frames. pageAssignments holds the validated ImportPlan pages (src/shared/design-plan.ts).
-model DesignImport {
-  id              String             @id @default(cuid())
-  storeId         String
-  fileId          String
-  figmaVersion    String
-  status          DesignImportStatus @default(QUEUED)
-  selectedNodeIds String[]
-  pageAssignments Json
-  error           String?
-  // Pipeline output (src/backend/lib/design-import/pipeline.ts): snapshots in storage, review data in `result`.
-  kind            DesignImportKind   @default(INSTALL)
-  rawSnapshotKey  String?
-  irSnapshotKey   String?
-  warnings        Json               @default("[]")
-  stats           Json               @default("{}")
-  result          Json?
-  // Job queue: claimed rows get lockedAt; failed stages retry after runAfter until attempts runs out.
-  attempts        Int                @default(0)
-  lockedAt        DateTime?
-  runAfter        DateTime           @default(now())
-  installedAt     DateTime?
-  createdBy       String
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-
-  store Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  file  FigmaFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  @@index([storeId, createdAt])
-  @@index([fileId])
-  @@index([status, runAfter])
-}
-
-enum DesignImportKind {
-  INSTALL
-  RESYNC
-}
-
-// Section type and layer→field choices an admin made in review, reused when the same Figma node is imported again.
-model SectionMapping {
-  id          String   @id @default(cuid())
-  storeId     String
-  fileKey     String
-  nodeId      String
-  sectionType String
-  fieldMap    Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@unique([storeId, fileKey, nodeId])
 }
 
 enum DesignSystemStatus {

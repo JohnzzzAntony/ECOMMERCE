@@ -17,9 +17,7 @@
     "test": "bun test tests",
     "test:db": "bun test tests/rls.db.test.ts",
     "test:e2e": "playwright test",
-    "test-db": "bun scripts/test-db.ts start",
-    "design:worker": "bun scripts/design-worker.ts",
-    "seed:design": "bun prisma/seed-design.ts"
+    "test-db": "bun scripts/test-db.ts start"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
