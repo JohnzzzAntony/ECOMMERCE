@@ -295,6 +295,18 @@ model BlogPost {
   @@index([isPublished])
 }
 
+// "Try the Look" homepage section: a full-body model photo with pinned products.
+// items: JSON [{ productId, x, y }] (pin position in % of the photo), validated by src/shared/looks.ts.
+model Look {
+  id        String   @id @default(cuid())
+  name      String
+  imageUrl  String
+  items     String   @default("[]")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
 model Testimonial {
   id        String  @id @default(cuid())
   name      String

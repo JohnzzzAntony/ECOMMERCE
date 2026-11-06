@@ -4,6 +4,7 @@ import type {
   Testimonial, ClientLogo, HeroSlide, GalleryItem, Order, Enquiry, User,
 } from '@/shared/types'
 import type { StorefrontTheme } from '@/shared/theme'
+import type { PublicLook } from '@/shared/looks'
 
 export interface PublicPage {
   slug: string
@@ -77,6 +78,7 @@ export const api = {
   blogPost: (slug: string) =>
     fetchJson<{ post: BlogPost; related: BlogPost[] }>(`/api/blog/${slug}`),
   testimonials: () => sharedGet<Testimonial[]>('/api/testimonials'),
+  looks: () => sharedGet<PublicLook[]>('/api/looks'),
   clients: () => sharedGet<ClientLogo[]>('/api/clients'),
   slider: () => sharedGet<HeroSlide[]>('/api/slider'),
   gallery: () => sharedGet<GalleryItem[]>('/api/gallery'),

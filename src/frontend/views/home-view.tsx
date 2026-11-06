@@ -25,6 +25,7 @@ import { PageBody, usePage } from '@/frontend/views/page-view'
 import { LINK_GRID_TILES, resolveSettings, sectionSchema, type SectionType, type ThemeSection, type ThemeSettings } from '@/shared/theme'
 import { SectionFrame } from '@/frontend/components/theme/section-frame'
 import { ScrollStroke } from '@/frontend/components/theme/scroll-stroke'
+import { TryTheLook } from '@/frontend/components/theme/try-the-look'
 import type {
   Product, Category, Collection, BlogPost, Testimonial,
   ClientLogo, HeroSlide, GalleryItem,
@@ -1320,6 +1321,7 @@ function sectionContent(type: SectionType, settings: ThemeSettings, data: HomeDa
       const lists = { new_arrivals: data.newArrivals, best_sellers: data.bestSellers, featured: data.featured, on_sale: data.onSale }
       return <ProductSlider s={s} products={lists[s.source as keyof typeof lists] ?? data.newArrivals} />
     }
+    case 'try_the_look': return <TryTheLook s={s} />
     case 'rich_text':
       return (
         <section className="bg-background py-12 sm:py-16">

@@ -15,6 +15,7 @@ import type { User } from '@/shared/types'
 import { adminApi, errorMessage } from './admin-api'
 import { BlogSection } from './blog'
 import { ClientsSection, MediaSection, TestimonialsSection } from './content'
+import { LooksSection } from './looks'
 import { DashboardSection } from './dashboard'
 import { NavigationSection } from './navigation'
 import { NewsletterSection } from './newsletter'
@@ -196,6 +197,7 @@ function AdminLayout({ user }: { user: User }) {
       case 'users': return <UsersSection />
       case 'blog': return <BlogSection />
       case 'media': return <MediaSection />
+      case 'looks': return <LooksSection />
       case 'testimonials': return <TestimonialsSection />
       case 'clients': return <ClientsSection />
       case 'newsletter': return <NewsletterSection />

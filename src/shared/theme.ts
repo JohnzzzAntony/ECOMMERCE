@@ -137,6 +137,15 @@ export const SECTION_TYPES = {
       { id: 'per_view', type: 'range', group: 'Layout', label: 'Cards visible (desktop)', default: 4, min: 2, max: 6, step: 1 },
     ],
   },
+  try_the_look: {
+    label: 'Try the Look',
+    note: 'Looks (model photos with pinned products) are managed under Try the Look in the admin.',
+    schema: [
+      t('eyebrow', 'Small heading'), t('title', 'Heading', { default: 'Try the Look' }),
+      t('text', 'Text', { type: 'textarea', default: 'Styled head to toe. Tap a pin to see the piece.' }),
+      { id: 'autoplay', type: 'range', group: 'Layout', label: 'Change look every', default: 5, min: 0, max: 15, step: 1, unit: 's', help: '0 turns autoplay off.' },
+    ],
+  },
   rich_text: { label: 'Custom HTML', schema: [t('title', 'Heading'), t('html', 'HTML content', { type: 'html' })] },
   page: { label: 'Custom page', note: 'Embeds a page from Pages.', schema: [t('page', 'Page', { type: 'page' })] },
 } satisfies Record<string, { label: string; note?: string; schema: ThemeSettingDef[] }>

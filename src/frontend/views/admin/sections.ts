@@ -1,10 +1,10 @@
 import {
-  Building2, FileStack, LayoutTemplate, Palette as Swatches, Images, FileText, Menu, Palette, Image as ImageIcon, LayoutDashboard, Mail, Package, Settings, ShoppingCart, Star, Users,
+  Building2, FileStack, Shirt, LayoutTemplate, Palette as Swatches, Images, FileText, Menu, Palette, Image as ImageIcon, LayoutDashboard, Mail, Package, Settings, ShoppingCart, Star, Users,
 } from 'lucide-react'
 
 export type SectionKey =
   | 'dashboard' | 'products' | 'orders' | 'users' | 'blog'
-  | 'media' | 'testimonials' | 'clients' | 'newsletter' | 'themes' | 'pages' | 'navigation' | 'store-pages' | 'design-system' | 'media-library' | 'settings'
+  | 'media' | 'looks' | 'testimonials' | 'clients' | 'newsletter' | 'themes' | 'pages' | 'navigation' | 'store-pages' | 'design-system' | 'media-library' | 'settings'
 
 export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; subtitle: string; group?: 'Online Store' | 'Design' }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, subtitle: 'Overview of your store performance' },
@@ -12,6 +12,7 @@ export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType
   { key: 'orders', label: 'Orders & Enquiries', icon: ShoppingCart, subtitle: 'Track orders and answer quote requests' },
   { key: 'users', label: 'Users', icon: Users, subtitle: 'Staff and customer accounts' },
   { key: 'media', label: 'Media', icon: ImageIcon, subtitle: 'Homepage slides and gallery' },
+  { key: 'looks', label: 'Try the Look', icon: Shirt, subtitle: 'Outfits with pinned products for the homepage' },
   { key: 'testimonials', label: 'Testimonials', icon: Star, subtitle: 'Customer quotes' },
   { key: 'clients', label: 'Clients', icon: Building2, subtitle: 'Partner logos' },
   { key: 'newsletter', label: 'Newsletter', icon: Mail, subtitle: 'Email subscribers' },

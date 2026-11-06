@@ -120,6 +120,15 @@ export interface Testimonial {
   isActive: boolean
 }
 
+export interface Look {
+  id: string
+  name: string
+  imageUrl: string
+  items: string // JSON LookPiece[]
+  sortOrder: number
+  isActive: boolean
+}
+
 export interface ClientLogo {
   id: string
   name: string

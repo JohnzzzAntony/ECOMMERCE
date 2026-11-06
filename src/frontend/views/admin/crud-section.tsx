@@ -25,6 +25,8 @@ export type FormField<T> = { key: string; label: string; full?: boolean; hint?: 
   | { type: 'switch' }
   | { type: 'rating' }
   | { type: 'select'; options: (items: T[], editing: T | null) => Option[]; emptyLabel?: string }
+  /** Bespoke editor; gets the whole form so it can depend on other fields. */
+  | { type: 'custom'; render: (value: string, onChange: (v: string) => void, form: FormValues) => React.ReactNode }
 )
 
 export interface Column<T> { label: string; render: (item: T) => React.ReactNode; className?: string }
@@ -44,7 +46,7 @@ export interface CrudConfig<T extends { id: string }> {
   deleteWarning?: (item: T) => string
 }
 
-type FormValues = Record<string, string | boolean>
+export type FormValues = Record<string, string | boolean>
 const NONE = '__none__'
 
 function emptyForm<T>(fields: FormField<T>[]): FormValues {
@@ -192,8 +194,8 @@ export function CrudSection<T extends { id: string; isActive?: boolean }>({ conf
           </DialogHeader>
           <div className="grid gap-4 py-2 sm:grid-cols-2">
             {config.fields.map((f) => (
-              <div key={f.key} className={`grid gap-2 ${f.full || f.type === 'textarea' || f.type === 'image' ? 'sm:col-span-2' : ''}`}>
-                <FieldInput field={f} value={form[f.key]} onChange={(v) => set(f.key, v)} items={items} editing={editing} />
+              <div key={f.key} className={`grid gap-2 ${f.full || f.type === 'textarea' || f.type === 'image' || f.type === 'custom' ? 'sm:col-span-2' : ''}`}>
+                <FieldInput field={f} value={form[f.key]} onChange={(v) => set(f.key, v)} items={items} editing={editing} form={form} />
                 {f.hint && <p className="text-xs text-muted-foreground">{f.hint}</p>}
               </div>
             ))}
@@ -210,16 +212,19 @@ export function CrudSection<T extends { id: string; isActive?: boolean }>({ conf
   )
 }
 
-function FieldInput<T>({ field, value, onChange, items, editing }: {
+function FieldInput<T>({ field, value, onChange, items, editing, form }: {
   field: FormField<T>
   value: string | boolean
   onChange: (v: string | boolean) => void
   items: T[]
   editing: T | null
+  form: FormValues
 }) {
   const required = 'required' in field && field.required
   const label = <Label>{field.label}{required && <span className="text-red-500"> *</span>}</Label>
   switch (field.type) {
+    case 'custom':
+      return <>{label}{field.render(String(value), onChange, form)}</>
     case 'image':
       return <ImageUpload value={String(value)} onChange={onChange} folder={field.folder} label={field.required ? `${field.label} *` : field.label} />
     case 'switch':
