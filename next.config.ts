@@ -30,6 +30,10 @@ const nextConfig: NextConfig = {
   // exceljs is CommonJS with optional deps; load it from node_modules instead of bundling.
   // isomorphic-dompurify brings jsdom, which must not be bundled either.
   serverExternalPackages: ["exceljs", "isomorphic-dompurify", "svgo"],
+  // Standalone "Try the Look" runway page (static HTML in public/runway).
+  async rewrites() {
+    return [{ source: "/runway", destination: "/runway/index.html" }];
+  },
   async headers() {
     const csp = [{ key: "Content-Security-Policy", value: storefrontCsp }, { key: "X-Content-Type-Options", value: "nosniff" }, { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" }];
     return [
