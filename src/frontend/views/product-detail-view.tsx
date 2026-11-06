@@ -6,6 +6,7 @@ import { useStore } from '@/frontend/store/use-store'
 import { api } from '@/frontend/lib/api'
 import { StarRating } from '@/frontend/components/product/star-rating'
 import { ProductCard } from '@/frontend/components/product/product-card'
+import { TryOnButton } from '@/frontend/components/product/try-on'
 import { Button } from '@/frontend/components/ui/button'
 import { Input } from '@/frontend/components/ui/input'
 import { Textarea } from '@/frontend/components/ui/textarea'
@@ -437,6 +438,7 @@ export function ProductDetailView() {
                 <GitCompare size={16} />
               </Button>
             </div>
+            <TryOnButton product={product} className="mt-3 w-full text-brand-teal" />
 
             {/* Trust badges */}
             <div className="mt-6 grid grid-cols-1 gap-2 rounded-xl border border-border bg-white p-4 sm:grid-cols-3">

@@ -9,6 +9,7 @@ import { api } from '@/frontend/lib/api'
 import { effectivePrice } from '@/frontend/lib/format'
 import { sizedImage } from '@/frontend/lib/image'
 import { buyNowHref, formatPrice } from '@/shared/storefront'
+import { TryOnButton } from '@/frontend/components/product/try-on'
 import type { Product } from '@/shared/types'
 
 const primary = { background: 'var(--color-primary, #0D6B8C)', color: 'var(--color-on-primary, #fff)' }
@@ -50,6 +51,7 @@ export function ProductPurchase({ product, label, currency }: { product: Product
           </a>
         </div>
       ) : <p className="font-medium opacity-70">Out of stock</p>}
+      <TryOnButton product={product} />
     </div>
   )
 }
