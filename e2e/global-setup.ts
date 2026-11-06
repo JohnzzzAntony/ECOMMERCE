@@ -10,7 +10,7 @@ export default async function globalSetup() {
   const db = new PrismaClient({ datasourceUrl: url })
   try {
     // The superuser bypasses row level security, so it can reset every store's rows.
-    await db.$executeRawUnsafe(`TRUNCATE "StorePageVersion","StorePage","Asset","Font","DesignSystem","SectionMapping","DesignImport","FigmaFile","FigmaOAuthState","FigmaConnection","AuditLog","StoreMember" CASCADE`)
+    await db.$executeRawUnsafe(`TRUNCATE "StorePageVersion","StorePage","Asset","Font","DesignSystem","AuditLog","StoreMember" CASCADE`)
     await db.store.update({ where: { id: 'legacy' }, data: { designSource: 'FIGMA', themesEnabled: false } })
     const user = await db.user.upsert({
       where: { email: E2E_ADMIN.email },

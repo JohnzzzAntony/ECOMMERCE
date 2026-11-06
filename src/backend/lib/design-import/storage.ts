@@ -1,13 +1,10 @@
 // Object storage for the design pipeline, on Cloudinary (the store's existing media provider; see AUDIT.md C5).
 // Every key is prefixed with tenants/{storeId}/ so stores never share paths.
-//   tenants/{storeId}/figma/{fileKey}/{importId}.json.gz      raw Figma snapshot   (private raw)
-//   tenants/{storeId}/figma/{fileKey}/{importId}.ir.json.gz   IR snapshot          (private raw)
 //   tenants/{storeId}/assets/{hash}                            images and SVGs      (public image)
 //   tenants/{storeId}/fonts/{family}/{file}.woff2              self-hosted fonts    (public raw)
 //   tenants/{storeId}/videos/{id}                              uploaded videos      (public video, uploaded by the browser)
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { gunzipSync, gzipSync } from 'node:zlib'
 import { cloudinary } from '@/backend/integrations/cloudinary'
 import { uploadDesignBuffer as upload } from './cloudinary-upload'
 
@@ -23,28 +20,6 @@ function assertKey(key: string, storeId: string) {
   if (!KEY.test(key) || !key.startsWith(`tenants/${storeId}/`) || key.includes('..')) throw new Error('Invalid storage key')
 }
 
-
-export const snapshotKey = (storeId: string, fileKey: string, importId: string, kind: 'raw' | 'ir') =>
-  `tenants/${storeId}/figma/${fileKey}/${importId}${kind === 'ir' ? '.ir' : ''}.json.gz`
-
-/** Gzipped JSON, private (authenticated delivery). */
-export async function putSnapshot(storeId: string, key: string, value: unknown) {
-  assertKey(key, storeId)
-  const data = gzipSync(Buffer.from(JSON.stringify(value)))
-  if (LOCAL) await localPut(key, data)
-  else await upload(data, { resource_type: 'raw', type: 'authenticated', public_id: key })
-  return key
-}
-
-export async function getSnapshot<T>(storeId: string, key: string): Promise<T> {
-  assertKey(key, storeId)
-  if (LOCAL) return JSON.parse(gunzipSync(await readFile(join(LOCAL_ROOT, key))).toString('utf8')) as T
-  // Authenticated raw files are fetched through the signed Admin download API (a signed delivery URL answers 401).
-  const url = cloudinary.utils.private_download_url(key, '', { resource_type: 'raw', type: 'authenticated', expires_at: Math.floor(Date.now() / 1000) + 300 })
-  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
-  if (!res.ok) throw new Error(`Snapshot download failed (${res.status})`)
-  return JSON.parse(gunzipSync(Buffer.from(await res.arrayBuffer())).toString('utf8')) as T
-}
 
 /** Public image (raster or SVG). Cloudinary serves AVIF/WebP at requested widths from this master. */
 export async function putImage(storeId: string, hash: string, data: Buffer, format: string) {

@@ -12,40 +12,37 @@ else describe('row level security (database)', async () => {
   process.env.DATABASE_URL = url
   const { db } = await import('../src/backend/lib/db')
   const { storeDb, systemDb } = await import('../src/backend/lib/tenancy')
-  const { runNextJob } = await import('../src/backend/lib/design-import/pipeline')
   const suffix = Date.now().toString(36)
   const A = `rls_a_${suffix}`, B = `rls_b_${suffix}`
 
   beforeAll(async () => {
     await db.store.createMany({ data: [{ id: A, slug: A, name: 'A' }, { id: B, slug: B, name: 'B' }] })
-    const row = { figmaUserId: '1', handle: 'h', authType: 'PAT' as const, accessTokenEnc: 'x.y', keyVersion: 1, createdBy: 'test' }
-    await storeDb(A).figmaConnection.create({ data: { storeId: A, ...row } })
+    await storeDb(A).auditLog.create({ data: { storeId: A, action: 'test', entityType: 'Store' } })
   })
 
   afterAll(async () => {
     for (const store of [A, B]) {
       const sdb = storeDb(store)
       await sdb.storePageVersion.deleteMany({}); await sdb.storePage.deleteMany({}); await sdb.asset.deleteMany({})
-      await sdb.designImport.deleteMany({}); await sdb.figmaFile.deleteMany({}); await sdb.designSystem.deleteMany({}); await sdb.auditLog.deleteMany({})
+      await sdb.designSystem.deleteMany({}); await sdb.auditLog.deleteMany({})
     }
-    await storeDb(A).figmaConnection.deleteMany({})
     await db.store.deleteMany({ where: { id: { in: [A, B] } } })
     await db.$disconnect()
   })
 
   test('a store sees only its own rows', async () => {
-    expect(await storeDb(A).figmaConnection.count()).toBe(1)
-    expect(await storeDb(B).figmaConnection.count()).toBe(0)
+    expect(await storeDb(A).auditLog.count()).toBe(1)
+    expect(await storeDb(B).auditLog.count()).toBe(0)
   })
 
   test('queries without app.store_id see nothing', async () => {
-    expect(await db.figmaConnection.count({ where: { storeId: A } })).toBe(0)
+    expect(await db.auditLog.count({ where: { storeId: A } })).toBe(0)
   })
 
   test('writing another store\'s row is rejected by the policy', async () => {
     await expect(db.$transaction([
       db.$executeRaw`SELECT set_config('app.store_id', ${B}, TRUE)`,
-      db.$executeRaw`INSERT INTO "FigmaConnection" ("id","storeId","figmaUserId","handle","authType","accessTokenEnc","keyVersion","createdBy","updatedAt") VALUES (${`x_${suffix}`}, ${A}, '1', 'h', 'PAT', 'x.y', 1, 'test', now())`,
+      db.$executeRaw`INSERT INTO "AuditLog" ("id","storeId","action","entityType") VALUES (${`x_${suffix}`}, ${A}, 'test', 'Store')`,
     ])).rejects.toThrow()
   })
 
@@ -63,11 +60,4 @@ else describe('row level security (database)', async () => {
     expect(await systemDb().storePage.count({ where: { storeId: A } })).toBe(1)
   })
 
-  test('the worker claims queued jobs across stores (SKIP LOCKED) and fails them cleanly without a Figma connection', async () => {
-    const file = await storeDb(B).figmaFile.create({ data: { storeId: B, fileKey: 'RlsTestFileKey0001', name: 'F', version: '1', lastModified: new Date() } })
-    const job = await storeDb(B).designImport.create({ data: { storeId: B, fileId: file.id, figmaVersion: '1', selectedNodeIds: ['1:1'], pageAssignments: [], createdBy: 'test' } })
-    while (await runNextJob()) { /* drain */ }
-    const after = await storeDb(B).designImport.findFirst({ where: { id: job.id } })
-    expect(after).toMatchObject({ status: 'FAILED', error: 'Connect a Figma account first', lockedAt: null })
-  })
 })

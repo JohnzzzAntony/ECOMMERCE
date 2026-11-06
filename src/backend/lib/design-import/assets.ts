@@ -1,4 +1,4 @@
-// Asset pipeline: download from Figma's expiring URLs (SSRF-guarded), sanitize, deduplicate, store.
+// Asset pipeline: sniff, sanitize, deduplicate, store uploaded images.
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { encode as encodeBlurhash } from 'blurhash'
@@ -7,54 +7,9 @@ import DOMPurify from 'isomorphic-dompurify'
 import type { StoreDb } from '@/backend/lib/tenancy'
 import { putImage } from './storage'
 
-// Hosts Figma serves image fills and renders from (observed 2026-10; the REST docs don't list them).
-export const FIGMA_ASSET_HOSTS = ['figma-alpha-api.s3.us-west-2.amazonaws.com', 'figma-alpha-api.s3.amazonaws.com', 's3-alpha-sig.figma.com', 's3-alpha.figma.com']
-export const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com']
-export const MAX_ASSET_BYTES = 25 * 1024 * 1024
 const MAX_STORED_IMAGE_BYTES = 9.5 * 1024 * 1024
-const MAX_REDIRECTS = 3
 
 export class AssetError extends Error {}
-
-/**
- * GET over HTTPS from an allowlisted host only. Redirects are followed manually and only to allowlisted hosts;
- * the body is capped at maxBytes. Prevents the server being pointed at internal addresses.
- */
-// E2E only: a local mock server (http) may serve Figma assets. Never honoured in production.
-const TEST_ORIGIN = process.env.NODE_ENV !== 'production' ? process.env.FIGMA_TEST_ASSET_ORIGIN : undefined
-
-export async function safeFetch(url: string, hosts: string[], maxBytes = MAX_ASSET_BYTES, init: RequestInit = {}): Promise<{ data: Buffer; contentType: string }> {
-  let current = url
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    let u: URL
-    try { u = new URL(current) } catch { throw new AssetError('Invalid asset URL') }
-    const testOrigin = !!TEST_ORIGIN && u.origin === TEST_ORIGIN
-    if (!testOrigin && (u.protocol !== 'https:' || !hosts.includes(u.hostname.toLowerCase()) || u.username || u.password || (u.port && u.port !== '443'))) throw new AssetError(`Blocked asset host ${u.hostname}`)
-    const res = await fetch(u, { ...init, redirect: 'manual', signal: AbortSignal.timeout(60_000) })
-    if (res.status >= 300 && res.status < 400) {
-      const location = res.headers.get('location')
-      await res.body?.cancel().catch(() => {})
-      if (!location) throw new AssetError('Redirect without location')
-      current = new URL(location, u).toString()
-      continue
-    }
-    if (!res.ok || !res.body) throw new AssetError(`Asset download failed (${res.status})`)
-    const declared = Number(res.headers.get('content-length'))
-    if (declared > maxBytes) { await res.body.cancel().catch(() => {}); throw new AssetError('Asset too large') }
-    const chunks: Uint8Array[] = []
-    let size = 0
-    const reader = res.body.getReader()
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      size += value.byteLength
-      if (size > maxBytes) { await reader.cancel().catch(() => {}); throw new AssetError('Asset too large') }
-      chunks.push(value)
-    }
-    return { data: Buffer.concat(chunks), contentType: res.headers.get('content-type') ?? '' }
-  }
-  throw new AssetError('Too many redirects')
-}
 
 /** Content type from the bytes, never from headers or names. */
 export function sniff(data: Buffer): 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | 'image/svg+xml' | null {

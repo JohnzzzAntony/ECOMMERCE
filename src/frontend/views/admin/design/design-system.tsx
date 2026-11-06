@@ -41,7 +41,7 @@ export function DesignSystemSection() {
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
           <div>
             <CardTitle>Design tokens</CardTitle>
-            <CardDescription>Colours, type and spacing from your Figma styles. Live: {state.active ? `v${state.active.version}` : 'none'}{state.draft ? ` · draft v${state.draft.version}` : ''}</CardDescription>
+            <CardDescription>Colours, type and spacing. Live: {state.active ? `v${state.active.version}` : 'none'}{state.draft ? ` · draft v${state.draft.version}` : ''}</CardDescription>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={save} disabled={!dirty}><Save className="size-4" /> Save draft</Button>

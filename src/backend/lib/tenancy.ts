@@ -10,8 +10,7 @@ import { HttpError, requireUser } from '@/backend/lib/auth'
 import { currentStore } from '@/backend/lib/store'
 
 export const STORE_MODELS = new Set([
-  'StoreMember', 'FigmaConnection', 'FigmaOAuthState', 'AuditLog', 'FigmaFile', 'DesignImport',
-  'SectionMapping', 'DesignSystem', 'Font', 'Asset', 'StorePage', 'StorePageVersion',
+  'StoreMember', 'AuditLog', 'DesignSystem', 'Font', 'Asset', 'StorePage', 'StorePageVersion',
 ])
 
 const WHERE_OPS = new Set([
