@@ -7,6 +7,7 @@ import { Check, Pause, Play, Plus, X } from 'lucide-react'
 import { useStore } from '@/frontend/store/use-store'
 import { api } from '@/frontend/lib/api'
 import { effectivePrice, formatAED } from '@/frontend/lib/format'
+import { sizedImage } from '@/frontend/lib/image'
 import type { PublicLook } from '@/shared/looks'
 import type { Product } from '@/shared/types'
 import css from './try-the-look.module.css'
@@ -84,7 +85,7 @@ function Runway({ looks, s }: { looks: Look[]; s: Settings }) {
           }
         } catch { /* image host without CORS: keep offset 0 */ }
       }
-      img.src = look.imageUrl
+      img.src = sizedImage(look.imageUrl, 96)
     })
   }, [looks])
 
@@ -162,7 +163,7 @@ function Runway({ looks, s }: { looks: Look[]; s: Settings }) {
   const figure = (i: number, pins: boolean) => (
     <div className={css.figure} data-figure>
       <div className={css.art} style={{ '--foot': feet[i] ?? 0 } as CSSProperties}>
-        <img src={looks[i].imageUrl} alt={looks[i].name} draggable={false} loading={i < 3 ? 'eager' : 'lazy'} decoding="async" />
+        <img src={sizedImage(looks[i].imageUrl, 900)} alt={looks[i].name} draggable={false} loading={i < 3 ? 'eager' : 'lazy'} decoding="async" />
         {pins && (
           <div className={css.pins}>
             {looks[i].items.map((it, j) => (
@@ -199,7 +200,7 @@ function Runway({ looks, s }: { looks: Look[]; s: Settings }) {
                   <span className={css.shadow} />
                   <div className={css.figure}>
                     <div className={css.art} style={{ '--foot': feet[a % n] ?? 0 } as CSSProperties}>
-                      <img src={looks[a % n].imageUrl} alt="" draggable={false} loading={a < n ? 'eager' : 'lazy'} decoding="async" />
+                      <img src={sizedImage(looks[a % n].imageUrl, 900)} alt="" draggable={false} loading={a < n ? 'eager' : 'lazy'} decoding="async" />
                       <button type="button" className={css.hit} data-hit tabIndex={-1} aria-label={`Look ${(a % n) + 1}: ${looks[a % n].name}`}
                         onClick={() => engine.current?.clickBody(a)} />
                     </div>
@@ -280,7 +281,7 @@ function Runway({ looks, s }: { looks: Look[]; s: Settings }) {
                 <li key={p.id} className={css.item} data-card={n1} data-hot={hot === n1} style={{ '--i': n1 } as CSSProperties}
                   onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHot(n1) }} onPointerLeave={(e) => { if (e.pointerType === 'mouse') setHot(null) }}>
                   <button type="button" className={css.media} tabIndex={-1} aria-hidden="true" onClick={() => open(p)}>
-                    {p.images?.[0] && <img src={p.images[0].imageUrl} alt="" loading="lazy" decoding="async" />}
+                    {p.images?.[0] && <img src={sizedImage(p.images[0].imageUrl, 240)} alt="" loading="lazy" decoding="async" />}
                     <span className={css.num}>{n1}</span>
                   </button>
                   <div className={css.info}>
