@@ -44,6 +44,8 @@ export interface NavParams {
   [key: string]: string | boolean | undefined
 }
 
+type CartLine = { productId: string; quantity: number; product: Product; size?: string }
+
 interface AppState {
   // Navigation
   view: ViewKey
@@ -56,11 +58,14 @@ interface AppState {
   setLang: (lang: 'en' | 'ar') => void
 
   // Cart
-  cart: { productId: string; quantity: number; product: Product }[]
-  addToCart: (product: Product, quantity?: number) => void
-  removeFromCart: (productId: string) => void
-  updateCartQty: (productId: string, quantity: number) => void
-  clearCart: () => void
+  cart: CartLine[]
+  salonBag: CartLine[]
+  salonDark: boolean
+  setSalonDark: (dark: boolean) => void
+  addToCart: (product: Product, quantity?: number, selection?: { channel: "ombrine"; size?: string }) => void
+  removeFromCart: (productId: string, channel?: "ombrine") => void
+  updateCartQty: (productId: string, quantity: number, channel?: "ombrine") => void
+  clearCart: (channel?: "ombrine") => void
   cartCount: () => number
   cartTotal: () => number
 
@@ -146,28 +151,32 @@ export const useStore = create<AppState>()(
       setLang: (lang) => set({ lang }),
 
       cart: [],
-      addToCart: (product, quantity = 1) => {
-        const cart = get().cart
-        const existing = cart.find((i) => i.productId === product.id)
-        if (existing) {
-          set({
-            cart: cart.map((i) =>
-              i.productId === product.id ? { ...i, quantity: i.quantity + quantity } : i
-            ),
-          })
-        } else {
-          set({ cart: [...cart, { productId: product.id, quantity, product }] })
-        }
+      salonBag: [],
+      salonDark: false,
+      setSalonDark: (salonDark) => set({ salonDark }),
+      addToCart: (product, quantity = 1, selection) => {
+        const list = selection ? 'salonBag' : 'cart'
+        const key = selection ? JSON.stringify([product.id, selection.size ?? '']) : product.id
+        set((s) => {
+          const cart = s[list]
+          const existing = cart.find((item) => item.productId === key)
+          const qty = (existing?.quantity ?? 0) + quantity
+          const line = { productId: key, product, size: selection?.size, quantity: selection ? Math.min(99, qty) : qty }
+          const next = existing ? cart.map((item) => item === existing ? line : item) : [...cart, line]
+          return list === 'salonBag' ? { salonBag: next } : { cart: next }
+        })
       },
-      removeFromCart: (productId) =>
-        set((s) => ({ cart: s.cart.filter((i) => i.productId !== productId) })),
-      updateCartQty: (productId, quantity) =>
-        set((s) => ({
-          cart: s.cart.map((i) =>
-            i.productId === productId ? { ...i, quantity: Math.max(1, quantity) } : i
-          ),
-        })),
-      clearCart: () => set({ cart: [] }),
+      removeFromCart: (productId, channel) => set((s) => {
+        const list = channel ? s.salonBag : s.cart
+        const next = list.filter((item) => item.productId !== productId)
+        return channel ? { salonBag: next } : { cart: next }
+      }),
+      updateCartQty: (productId, quantity, channel) => set((s) => {
+        const list = channel ? s.salonBag : s.cart
+        const next = list.map((item) => item.productId === productId ? { ...item, quantity: Math.max(1, quantity) } : item)
+        return channel ? { salonBag: next } : { cart: next }
+      }),
+      clearCart: (channel) => set(channel ? { salonBag: [] } : { cart: [] }),
       cartCount: () => get().cart.reduce((sum, i) => sum + i.quantity, 0),
       cartTotal: () =>
         get().cart.reduce((sum, i) => {
@@ -272,6 +281,8 @@ export const useStore = create<AppState>()(
       partialize: (s) => ({
         lang: s.lang,
         cart: s.cart,
+        salonBag: s.salonBag,
+        salonDark: s.salonDark,
         wishlist: s.wishlist,
         user: s.user,
         settings: s.settings,

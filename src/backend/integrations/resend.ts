@@ -15,6 +15,7 @@ export async function sendOrderConfirmation(order: {
   customerName: string
   email: string
   total: number
+  currency?: string | null
   paymentMethod: string
   items: Array<{ productName: string; qty: number; unitPrice: number; subtotal: number }>
 }) {
@@ -24,8 +25,8 @@ export async function sendOrderConfirmation(order: {
         `<tr>
           <td style="padding:8px;border-bottom:1px solid #eee">${i.productName}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${i.qty}</td>
-          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">AED ${i.unitPrice.toFixed(2)}</td>
-          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">AED ${i.subtotal.toFixed(2)}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${order.currency || 'AED'} ${i.unitPrice.toFixed(2)}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${order.currency || 'AED'} ${i.subtotal.toFixed(2)}</td>
         </tr>`
     )
     .join('')
@@ -62,7 +63,7 @@ export async function sendOrderConfirmation(order: {
                 <tr>
                   <td colspan="3" style="padding:12px 8px;text-align:right;font-weight:bold">Total</td>
                   <td style="padding:12px 8px;text-align:right;font-weight:bold;font-size:18px;color:#1a56db">
-                    AED ${order.total.toFixed(2)}
+                    ${order.currency || 'AED'} ${order.total.toFixed(2)}
                   </td>
                 </tr>
               </tfoot>
@@ -87,6 +88,7 @@ export async function sendOrderAdminNotification(order: {
   email: string
   phone?: string | null
   total: number
+  currency?: string | null
   paymentMethod: string
   items: Array<{ productName: string; qty: number; subtotal: number }>
 }) {
@@ -94,7 +96,7 @@ export async function sendOrderAdminNotification(order: {
     await resend.emails.send({
       from: `JKR Orders <${FROM}>`,
       to: ADMIN_EMAIL,
-      subject: `🛒 New Order: ${order.orderNumber} — AED ${order.total.toFixed(2)}`,
+      subject: `🛒 New Order: ${order.orderNumber} — ${order.currency || 'AED'} ${order.total.toFixed(2)}`,
       html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
           <h2>New Order Received</h2>
@@ -102,9 +104,9 @@ export async function sendOrderAdminNotification(order: {
           <p><strong>Customer:</strong> ${order.customerName} (${order.email})</p>
           ${order.phone ? `<p><strong>Phone:</strong> ${order.phone}</p>` : ''}
           <p><strong>Payment:</strong> ${order.paymentMethod}</p>
-          <p><strong>Total:</strong> AED ${order.total.toFixed(2)}</p>
+          <p><strong>Total:</strong> ${order.currency || 'AED'} ${order.total.toFixed(2)}</p>
           <h3>Items:</h3>
-          <ul>${order.items.map((i) => `<li>${i.productName} x${i.qty} = AED ${i.subtotal.toFixed(2)}</li>`).join('')}</ul>
+          <ul>${order.items.map((i) => `<li>${i.productName} x${i.qty} = ${order.currency || 'AED'} ${i.subtotal.toFixed(2)}</li>`).join('')}</ul>
         </div>
       `,
     })

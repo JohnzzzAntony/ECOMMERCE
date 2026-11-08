@@ -5,6 +5,7 @@ import { MapPin, Search, X } from 'lucide-react'
 import { Input } from '@/frontend/components/ui/input'
 import { api } from '@/frontend/lib/api'
 import { effectivePrice, formatAED } from '@/frontend/lib/format'
+import { LOOK_AUDIENCES } from '@/shared/ombrine'
 import { LOOK_MAX_PIECES, readLookPieces, type LookPiece } from '@/shared/looks'
 import type { Look, Product } from '@/shared/types'
 import { CrudSection, type CrudConfig } from './crud-section'
@@ -12,13 +13,17 @@ import { Thumb } from './shared'
 
 const looks: CrudConfig<Look> = {
   endpoint: '/api/admin/looks',
-  title: 'Try the Look',
-  subtitle: 'Outfits for the homepage “Try the Look” section (add it under Themes → Customize)',
+  title: 'Looks and models',
+  subtitle: 'Edit salon order, model photography, and the products in each look.',
   singular: 'Look',
   activeToggle: true,
   searchText: (l) => l.name,
   fields: [
     { key: 'name', label: 'Look name', type: 'text', required: true, placeholder: 'e.g. The City Edit' },
+    { key: 'description', label: 'Look description', type: 'textarea' },
+    { key: 'modelName', label: 'Model name', type: 'text' },
+    { key: 'audience', label: 'Look filter', type: 'select', emptyLabel: 'Uncategorised', options: () => LOOK_AUDIENCES.map((value) => ({ value, label: value === 'women' ? 'Women' : 'Men' })) },
+    { key: 'collection', label: 'Salon collection', type: 'text', placeholder: 'e.g. Evening', hint: 'Looks with the same collection name share a row in the salon. Collections follow the display order of their first look.' },
     { key: 'sortOrder', label: 'Display order', type: 'number', min: 0, hint: 'Lower numbers show first.' },
     { key: 'imageUrl', label: 'Model photo', type: 'image', folder: 'looks', required: true, hint: 'A full-body photo on a transparent or plain background works best (portrait, about 9:16).' },
     {
@@ -30,6 +35,7 @@ const looks: CrudConfig<Look> = {
   columns: [
     { label: 'Photo', className: 'w-16', render: (l) => <Thumb src={l.imageUrl} alt={l.name} className="h-14 w-10 object-contain" /> },
     { label: 'Look', render: (l) => <span className="font-medium text-brand-ink">{l.name}</span> },
+    { label: 'Collection', render: (l) => l.collection || '—' },
     { label: 'Products', render: (l) => readLookPieces(l.items).length },
     { label: 'Order', className: 'text-right', render: (l) => l.sortOrder },
   ],

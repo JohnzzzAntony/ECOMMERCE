@@ -13,6 +13,7 @@ import { Skeleton } from '@/frontend/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/frontend/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/frontend/components/ui/tabs'
 import { Textarea } from '@/frontend/components/ui/textarea'
+import { salonPrice } from '@/shared/ombrine'
 import { formatAED, formatDate } from '@/frontend/lib/format'
 import type { Enquiry, Order } from '@/shared/types'
 import { adminApi, errorMessage, useAdminList } from './admin-api'
@@ -115,7 +116,7 @@ export function OrdersEnquiriesSection() {
                         <TableCell className="font-mono text-xs">{o.orderNumber}</TableCell>
                         <TableCell><div className="font-medium">{o.customerName}</div><div className="text-xs text-muted-foreground">{o.email}</div></TableCell>
                         <TableCell>{o.items?.length || 0}</TableCell>
-                        <TableCell className="text-right font-medium">{formatAED(o.total)}</TableCell>
+                        <TableCell className="text-right font-medium">{o.currency ? salonPrice(o.total, o.currency) : formatAED(o.total)}</TableCell>
                         <TableCell><div className="flex flex-col items-start gap-1"><Badge variant="secondary" className="text-[10px] uppercase">{o.paymentMethod}</Badge><StatusBadge status={o.paymentStatus} /></div></TableCell>
                         <TableCell><StatusBadge status={o.orderStatus} /></TableCell>
                         <TableCell className="text-xs text-muted-foreground">{formatDate(o.createdAt)}</TableCell>
@@ -208,16 +209,16 @@ function OrderDialog({ order: o, onClose, onUpdate }: {
                 <TableBody>
                   {o.items?.map((it) => (
                     <TableRow key={it.id}>
-                      <TableCell><div className="font-medium">{it.productName}</div><div className="text-xs text-muted-foreground">{it.sku || '—'}</div></TableCell>
+                      <TableCell><div className="font-medium">{it.productName}</div><div className="text-xs text-muted-foreground">{it.sku || '—'}{it.size && ` · Size ${it.size}`}</div></TableCell>
                       <TableCell className="text-right">{it.qty}</TableCell>
-                      <TableCell className="text-right">{formatAED(it.unitPrice)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatAED(it.subtotal)}</TableCell>
+                      <TableCell className="text-right">{o.currency ? salonPrice(it.unitPrice, o.currency) : formatAED(it.unitPrice)}</TableCell>
+                      <TableCell className="text-right font-medium">{o.currency ? salonPrice(it.subtotal, o.currency) : formatAED(it.subtotal)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
-            <div className="flex items-center justify-between rounded-lg bg-muted px-4 py-3"><span className="font-semibold">Total</span><span className="text-lg font-bold text-brand-teal">{formatAED(o.total)}</span></div>
+            <div className="flex items-center justify-between rounded-lg bg-muted px-4 py-3"><span className="font-semibold">Total</span><span className="text-lg font-bold text-brand-teal">{o.currency ? salonPrice(o.total, o.currency) : formatAED(o.total)}</span></div>
             {o.notes && <div className="rounded-lg border border-border p-3"><div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Customer notes</div><p className="whitespace-pre-wrap text-sm">{o.notes}</p></div>}
             <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
           </>

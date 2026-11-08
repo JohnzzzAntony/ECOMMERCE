@@ -125,6 +125,10 @@ export interface Look {
   name: string
   imageUrl: string
   items: string // JSON LookPiece[]
+  description?: string | null
+  modelName?: string | null
+  audience?: string | null
+  collection?: string | null
   sortOrder: number
   isActive: boolean
 }
@@ -183,6 +187,7 @@ export interface Order {
   orderStatus: string
   notes: string | null
   createdAt: string
+  currency?: string | null
   items: OrderItem[]
 }
 
@@ -191,6 +196,7 @@ export interface OrderItem {
   productName: string
   sku: string | null
   unitPrice: number
+  size?: string | null
   qty: number
   subtotal: number
 }

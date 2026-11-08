@@ -28,7 +28,7 @@ function handleLinkClick(event: MouseEvent | React.MouseEvent, scrollToHash: (id
   if (followHref(href)) event.preventDefault()
 }
 
-export function SafeHtml({ html, css, className = 'page-content' }: { html: string; css?: string; className?: string }) {
+export function SafeHtml({ html, css, className = 'page-content', spaNavigation = true }: { html: string; css?: string; className?: string; spaNavigation?: boolean }) {
   // DOMPurify needs a DOM, so sanitize after mount (also keeps server and client markup identical).
   const [clean, setClean] = useState<string | null>(null)
   useEffect(() => {
@@ -50,7 +50,7 @@ export function SafeHtml({ html, css, className = 'page-content' }: { html: stri
       {css ? <style dangerouslySetInnerHTML={{ __html: styleText(css) }} /> : null}
       {clean === null
         ? <div className="min-h-24" aria-busy="true" />
-        : <div className={className} onClick={(e) => handleLinkClick(e, scrollTo)} dangerouslySetInnerHTML={{ __html: clean }} />}
+        : <div className={className} onClick={spaNavigation ? (e) => handleLinkClick(e, scrollTo) : undefined} dangerouslySetInnerHTML={{ __html: clean }} />}
     </>
   )
 }

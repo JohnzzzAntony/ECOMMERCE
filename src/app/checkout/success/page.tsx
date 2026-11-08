@@ -18,7 +18,7 @@ export default async function CheckoutSuccessPage({ searchParams }: { searchPara
         {result?.paid ? <CheckCircle2 className="mx-auto size-14 text-brand-teal" aria-hidden /> : <Clock className="mx-auto size-14 text-muted-foreground" aria-hidden />}
         {result ? (
           <>
-            <p className="text-lg text-brand-ink">Order <strong>{result.orderNumber}</strong> · {formatPrice(result.total, process.env.CURRENCY || 'AED')}</p>
+            <p className="text-lg text-brand-ink">Order <strong>{result.orderNumber}</strong> · {formatPrice(result.total, result.currency || process.env.CURRENCY || 'AED')}</p>
             <p className="text-muted-foreground">{result.paid ? 'Payment received. A confirmation email is on its way.' : 'We are confirming your payment. You will get an email once it is complete.'}</p>
           </>
         ) : <p className="text-muted-foreground">We could not find this payment. If you were charged, please contact us with your email address.</p>}

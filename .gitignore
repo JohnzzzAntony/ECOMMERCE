@@ -69,3 +69,4 @@ playwright-report/
 # Separate Next.js build dirs for E2E and Lighthouse runs
 .next-e2e/
 .next-lh/
+.next-ombrine/

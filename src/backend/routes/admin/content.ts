@@ -2,6 +2,7 @@
 import { db } from '@/backend/lib/db'
 import { adminResource } from '@/backend/lib/admin-resource'
 import { HttpError } from '@/backend/lib/auth'
+import { LOOK_AUDIENCES } from '@/shared/ombrine'
 import { LOOK_MAX_PIECES, lookPiecesSchema, type LookPiece } from '@/shared/looks'
 
 const display = { sortOrder: { type: 'int', min: 0, max: 100000 }, isActive: { type: 'bool' } } as const
@@ -73,7 +74,14 @@ export const looks = adminResource({
     name: { type: 'text', required: true, max: 120 },
     imageUrl: { type: 'text', required: true, max: 1000 },
     items: { type: 'text', max: 20000 },
+    description: { type: 'text', max: 2000 },
+    modelName: { type: 'text', max: 120 },
+    audience: { type: 'text', max: 20 },
+    collection: { type: 'text', max: 80 },
     ...display,
   },
-  validate: validateLookItems,
+  validate: async (data) => {
+    if (data.audience && !LOOK_AUDIENCES.some((value) => value === data.audience)) throw new HttpError(400, 'Invalid look audience')
+    await validateLookItems(data)
+  },
 })

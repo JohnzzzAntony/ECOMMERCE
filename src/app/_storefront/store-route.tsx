@@ -4,6 +4,8 @@ import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { renderPage } from '@/backend/lib/storefront'
 import { StorefrontPage } from '@/frontend/components/sections/storefront-page'
+import { loadOmbrineTheme, OmbrineRoute, ombrineContentPage } from './ombrine-route'
+import { salonProduct } from '@/backend/lib/ombrine'
 import { richTextToPlain } from '@/shared/store-pages'
 import type { RenderedPage } from '@/shared/storefront'
 
@@ -29,6 +31,23 @@ function pathOf(page: RenderedPage) {
 }
 
 export async function storeMetadata(route: StoreRoute): Promise<Metadata | null> {
+  const theme = await loadOmbrineTheme()
+  if (theme) {
+    const name = String(theme.settings.logo_text || 'Ombrine')
+    if (route.kind === 'page' && !route.slug) {
+      const title = `${name} — The fashion salon`
+      const description = 'Explore the looks and shop the pieces.'
+      return { title, description, keywords: null, authors: null, openGraph: { siteName: name, title, description }, twitter: { card: 'summary', title, description } }
+    }
+    if (route.kind === 'cart') return { title: `Your bag | ${name}`, robots: { index: false } }
+    if (route.kind === 'product') {
+      const product = await salonProduct(theme, route.slug)
+      return product ? { title: product.metaTitle || `${product.name} | ${name}`, description: product.metaDescription || product.shortDescription || undefined } : null
+    }
+    if (route.kind === 'collection') return { title: `Collection | ${name}` }
+    const content = await ombrineContentPage(route.slug, theme.id)
+    return content ? { title: content.metaTitle || `${content.title} | ${name}`, description: content.metaDescription || undefined } : null
+  }
   const page = await loadStorePage(route)
   if (!page) return null
   const { origin } = await requestOrigin()
@@ -48,6 +67,8 @@ export async function storeMetadata(route: StoreRoute): Promise<Metadata | null>
 
 /** Renders the page or 404s. */
 export async function StoreRoutePage({ route }: { route: StoreRoute }) {
+  const theme = await loadOmbrineTheme()
+  if (theme) return <OmbrineRoute route={route} theme={theme} />
   const page = await loadStorePage(route)
   if (!page) notFound()
   const { origin } = await requestOrigin()

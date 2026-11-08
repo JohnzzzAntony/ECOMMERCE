@@ -7,10 +7,13 @@ import { checkOrigin, currentUser, HttpError } from '@/backend/lib/auth'
 import { rateLimit } from '@/backend/lib/rate-limit'
 import { clientIp } from '@/backend/lib/tenancy'
 import { createCheckoutSession, stripe } from '@/backend/integrations/stripe'
+import { storefrontTheme } from '@/backend/lib/theme-store'
+import { salonCatalog } from '@/backend/lib/ombrine'
+import { isOmbrine, productSizes, salonCurrency } from '@/shared/ombrine'
 import { effectivePrice } from '@/shared/storefront'
 
 const bodySchema = z.object({
-  items: z.array(z.object({ productId: z.string().min(1).max(40), qty: z.number().int().min(1).max(99) })).min(1).max(50),
+  items: z.array(z.object({ productId: z.string().min(1).max(40), qty: z.number().int().min(1).max(99), size: z.string().min(1).max(32).optional() })).min(1).max(50),
   customerName: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(200),
   phone: z.string().trim().max(40).optional().default(''),
@@ -29,15 +32,27 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) return NextResponse.json({ error: 'Please check your details and try again.' }, { status: 400 })
     const body = parsed.data
 
-    // Merge repeated lines, then price every line from the database.
-    const qtyById = new Map<string, number>()
-    for (const i of body.items) qtyById.set(i.productId, Math.min(99, (qtyById.get(i.productId) ?? 0) + i.qty))
-    const products = await db.product.findMany({ where: { id: { in: [...qtyById.keys()] } }, include: { images: { take: 1, orderBy: { sortOrder: 'asc' } } } })
-    if (products.length !== qtyById.size) return NextResponse.json({ error: 'A product in your order is no longer available.' }, { status: 409 })
-    const unavailable = products.find((p) => !p.inStock)
-    if (unavailable) return NextResponse.json({ error: `${unavailable.name} is out of stock.` }, { status: 409 })
-
-    const lines = products.map((p) => ({ product: p, qty: qtyById.get(p.id)!, unitPrice: effectivePrice(p) }))
+    const theme = await storefrontTheme()
+    const ombrine = isOmbrine(theme)
+    const currency = ombrine ? salonCurrency(theme) : process.env.CURRENCY || 'AED'
+    const ids = [...new Set(body.items.map(({ productId }) => productId))]
+    const products = await db.product.findMany({
+      where: { id: { in: ids }, ...(ombrine ? salonCatalog(theme) : {}) },
+      include: { images: { take: 1, orderBy: { sortOrder: 'asc' } } },
+    })
+    if (products.length !== ids.length) throw new HttpError(409, 'A product in your order is no longer available.')
+    const byId = new Map(products.map((product) => [product.id, product]))
+    const grouped = new Map<string, { product: (typeof products)[number]; size?: string; qty: number; unitPrice: number }>()
+    for (const item of body.items) {
+      const product = byId.get(item.productId)!
+      if (!product.inStock) throw new HttpError(409, `${product.name} is out of stock.`)
+      const sizes = ombrine ? productSizes(product) : []
+      if (sizes.length ? !item.size || !sizes.includes(item.size) : !!item.size) throw new HttpError(409, `Please review the size for ${product.name}.`)
+      const key = JSON.stringify([item.productId, item.size])
+      const qty = Math.min(99, (grouped.get(key)?.qty ?? 0) + item.qty)
+      grouped.set(key, { product, qty, size: item.size, unitPrice: effectivePrice(product) })
+    }
+    const lines = [...grouped.values()]
     const subtotal = lines.reduce((n, l) => n + l.unitPrice * l.qty, 0)
     const user = await currentUser(request)
 
@@ -51,10 +66,11 @@ export async function POST(request: NextRequest) {
         billingAddress: '{}',
         shippingAddress: '{}',
         subtotal,
+        currency,
         total: subtotal,
         paymentMethod: 'stripe',
         notes: body.notes || null,
-        items: { create: lines.map((l) => ({ productId: l.product.id, productName: l.product.name, sku: l.product.sku, unitPrice: l.unitPrice, qty: l.qty, subtotal: l.unitPrice * l.qty })) },
+        items: { create: lines.map((l) => ({ productId: l.product.id, productName: l.product.name, sku: l.product.sku, size: l.size, unitPrice: l.unitPrice, qty: l.qty, subtotal: l.unitPrice * l.qty })) },
       },
     })
 
@@ -62,12 +78,13 @@ export async function POST(request: NextRequest) {
     const session = await createCheckoutSession({
       items: lines.map((l) => ({
         name: l.product.name,
-        description: l.product.sku ? `SKU: ${l.product.sku}` : undefined,
+        description: [l.size ? `Size: ${l.size}` : '', l.product.sku ? `SKU: ${l.product.sku}` : ''].filter(Boolean).join(' · ') || undefined,
         imageUrl: /^https:\/\//.test(l.product.images[0]?.imageUrl ?? '') ? l.product.images[0].imageUrl : undefined,
         unitPrice: l.unitPrice,
         quantity: l.qty,
         productId: l.product.id,
       })),
+      currency,
       orderId: order.id,
       orderNumber: order.orderNumber,
       customerEmail: body.email,
@@ -88,7 +105,7 @@ export async function checkoutResult(sessionId: string) {
   const session = await stripe.checkout.sessions.retrieve(sessionId).catch(() => null)
   const orderId = session?.metadata?.orderId
   if (!session || !orderId) return null
-  const order = await db.order.findUnique({ where: { id: orderId }, select: { orderNumber: true, total: true } })
+  const order = await db.order.findUnique({ where: { id: orderId }, select: { orderNumber: true, total: true, currency: true } })
   if (!order) return null
-  return { orderNumber: order.orderNumber, total: order.total, paid: session.payment_status === 'paid' }
+  return { orderNumber: order.orderNumber, total: order.total, currency: order.currency, paid: session.payment_status === 'paid' }
 }

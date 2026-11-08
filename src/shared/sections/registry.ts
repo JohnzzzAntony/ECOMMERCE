@@ -101,12 +101,13 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
     dataBound: true,
   }),
   'product-grid': def({
-    type: 'product-grid', name: 'Product grid', icon: 'ShoppingBag', description: 'Products from a collection, a hand-picked list or best sellers.',
+    type: 'product-grid', name: 'Product grid', icon: 'ShoppingBag', description: 'Show store products in a responsive grid or swipeable carousel.',
     allowedPageTypes: CONTENT,
     settings: z.object({
       title: f.text('Heading', 'Featured products'), headingLevel: f.heading(),
       source: f.select('Products', ['collection', 'manual', 'best-sellers', 'current-collection'] as const, 'best-sellers', { collection: 'From a collection', manual: 'Pick products', 'best-sellers': 'Best sellers', 'current-collection': 'Collection being viewed (collection template)' }),
       collection: f.collection('Collection'), products: f.products('Products'), limit: f.range('Number of products', 1, 48, 8),
+      display: f.select('Display style', ['grid', 'carousel'] as const, 'grid', { grid: 'Responsive grid', carousel: 'Swipeable carousel' }),
       columns: f.range('Columns', 1, 6, 4), showPrice: f.boolean('Show prices', true), showAddToCart: f.boolean('Show add to cart', true), ...styleFields,
     }),
     hints: { keywords: ['products', 'product grid', 'best sellers', 'bestsellers', 'shop', 'catalog', 'new arrivals', 'featured'], titleField: 'title' },

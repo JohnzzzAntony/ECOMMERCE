@@ -155,7 +155,7 @@ const fallbackSection = (type: SectionType, settings: Record<string, unknown> = 
   ({ id: newId(), type, figmaNodeId: null, settings: { ...defaultSettings(type), ...settings }, blocks: [], responsive: {}, hidden: false, overriddenFields: [], mappingConfidence: 1 })
 
 /** A published page for the storefront, or null (404). Templates fall back to a default section. */
-export async function renderPage(host: string, route: { kind: 'page'; slug: string } | { kind: 'product'; slug: string } | { kind: 'collection'; slug: string; q?: string } | { kind: 'cart' }): Promise<RenderedPage | null> {
+export async function renderPage(host: string, route: { kind: 'page'; slug: string } | { kind: 'product'; slug: string } | { kind: 'collection'; slug: string; q?: string; page?: number; brand?: string; sale?: boolean; sort?: string } | { kind: 'cart' }): Promise<RenderedPage | null> {
   const store = await figmaStorefront(host)
   if (!store) return null
   let routeCtx: RouteContext = { kind: 'page' }

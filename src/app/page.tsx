@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
-import { StorefrontApp } from '@/frontend/storefront-app'
+import { OmbrineHome } from '@/frontend/components/theme/ombrine-salon'
 import { storefrontTheme } from '@/backend/lib/theme-store'
 import { storeSettings } from '@/backend/routes/content/settings'
+import { loadOmbrineTheme } from './_storefront/ombrine-route'
+import { salonLooks } from '@/backend/lib/ombrine'
 import { loadStorePage, storeMetadata, StoreRoutePage } from './_storefront/store-route'
 
 // Theme and settings are read per request (from the in-process cache), so admin edits show on the next load.
@@ -17,8 +19,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return (await storeMetadata({ kind: 'page', slug: '' }).catch(warn('the Figma home page'))) ?? {}
 }
 
-export default async function Home() {
-  if (await loadStorePage({ kind: 'page', slug: '' }).catch(warn('the Figma home page'))) return <StoreRoutePage route={{ kind: 'page', slug: '' }} />
-  const [theme, settings] = await Promise.all([storefrontTheme().catch(warn('the active theme')), storeSettings().catch(warn('store settings'))])
-  return <StorefrontApp initialTheme={theme} initialSettings={settings} />
+export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const [ombrine, params] = await Promise.all([loadOmbrineTheme(), searchParams])
+  const preview = !!(params['theme-editor'] || params['theme-preview'])
+  if (!preview && ombrine) return <OmbrineHome theme={ombrine} initialLooks={await salonLooks(ombrine)} />
+  if (!preview && await loadStorePage({ kind: 'page', slug: '' }).catch(warn('the Figma home page'))) return <StoreRoutePage route={{ kind: 'page', slug: '' }} />
+  const [{ StorefrontApp }, theme, settings, looks] = await Promise.all([
+    import('@/frontend/storefront-app'),
+    storefrontTheme().catch(warn('the active theme')),
+    storeSettings().catch(warn('store settings')),
+    ombrine ? salonLooks(ombrine) : undefined,
+  ])
+  return <StorefrontApp initialTheme={theme} initialSettings={settings} initialLooks={looks} />
 }

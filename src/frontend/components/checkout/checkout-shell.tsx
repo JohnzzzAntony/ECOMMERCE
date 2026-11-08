@@ -5,10 +5,13 @@ import { useStore } from '@/frontend/store/use-store'
 import { ThemeContext } from '@/frontend/lib/theme'
 import { StoreLogo } from '@/frontend/components/layout/header'
 import type { StorefrontTheme } from '@/shared/theme'
+import { isOmbrine } from '@/shared/ombrine'
+import { OmbrineShell } from '@/frontend/components/theme/ombrine-shell'
 import { FROM_CART_KEY } from './checkout-form'
 
 /** `theme` = the active storefront theme, so the header shows the store's own logo. */
 export function CheckoutShell({ title, theme, children }: { title: string; theme: StorefrontTheme | null; children: ReactNode }) {
+  if (isOmbrine(theme)) return <OmbrineShell theme={theme}><section className="om-content om-checkout"><header><h1>{title}</h1></header>{children}</section></OmbrineShell>
   return (
     <ThemeContext.Provider value={theme}>
     <div className="min-h-screen bg-white">
@@ -31,7 +34,8 @@ export function CheckoutShell({ title, theme, children }: { title: string; theme
 export function ClearCartAfterPayment() {
   const clearCart = useStore((s) => s.clearCart)
   useEffect(() => {
-    if (sessionStorage.getItem(FROM_CART_KEY)) { clearCart(); sessionStorage.removeItem(FROM_CART_KEY) }
+    const source = sessionStorage.getItem(FROM_CART_KEY)
+    if (source) { clearCart(source === 'ombrine' ? 'ombrine' : undefined); sessionStorage.removeItem(FROM_CART_KEY) }
   }, [clearCart])
   return null
 }

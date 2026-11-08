@@ -33,12 +33,14 @@ import { AdminView } from '@/frontend/views/admin'
 import { TrackOrderView } from '@/frontend/views/track-order-view'
 import { PageView } from '@/frontend/views/page-view'
 import { ThemeContext } from '@/frontend/lib/theme'
+import { OmbrineHome } from '@/frontend/components/theme/ombrine-salon'
+import { isOmbrine, salonBrand, type SalonLook } from '@/shared/ombrine'
 import { useEditorDraft } from '@/frontend/components/theme/editor-bridge'
 import { styleText, themeVariablesCss, type StorefrontTheme } from '@/shared/theme'
 
 // Single-page storefront: the Zustand store's `view` decides which screen renders.
 // `initialTheme` is the active theme rendered on the server, so theme styles apply on first paint.
-export function StorefrontApp({ initialTheme, initialSettings }: { initialTheme?: StorefrontTheme | null; initialSettings?: Record<string, string> | null }) {
+export function StorefrontApp({ initialTheme, initialSettings, initialLooks }: { initialTheme?: StorefrontTheme | null; initialSettings?: Record<string, string> | null; initialLooks?: SalonLook[] }) {
   const { view, params, lang, setSettings, compareList, toggleWishlist, navigate, pageHidesChrome } = useStore()
   const storeTheme = useStore((s) => s.theme)
   const editorDraft = useEditorDraft()
@@ -122,6 +124,12 @@ export function StorefrontApp({ initialTheme, initialSettings }: { initialTheme?
       case 'page': return <PageView />
       default: return <HomeView />
     }
+  }
+
+  if (isOmbrine(theme)) {
+    const brand = salonBrand(theme)
+    const previewBrand = editorDraft && (!isOmbrine(initialTheme) || salonBrand(initialTheme) !== brand) ? brand : undefined
+    return <OmbrineHome key={previewBrand ?? 'live'} theme={theme} initialLooks={previewBrand ? undefined : initialLooks} previewBrand={previewBrand} />
   }
 
   const isAdmin = view === 'admin'

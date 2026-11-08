@@ -12,7 +12,7 @@ export interface StripeLineItem {
   name: string
   description?: string
   imageUrl?: string
-  unitPrice: number // in AED (will convert to fils = * 100)
+  unitPrice: number // Major currency units
   quantity: number
   productId?: string
 }
@@ -22,6 +22,7 @@ export interface StripeLineItem {
  */
 export async function createCheckoutSession({
   items,
+  currency = 'AED',
   orderId,
   orderNumber,
   customerEmail,
@@ -29,6 +30,7 @@ export async function createCheckoutSession({
   cancelUrl,
 }: {
   items: StripeLineItem[]
+  currency?: string
   orderId: string
   orderNumber: string
   customerEmail?: string
@@ -37,14 +39,14 @@ export async function createCheckoutSession({
 }): Promise<{ url: string; sessionId: string }> {
   const lineItems = items.map((item) => ({
     price_data: {
-      currency: 'aed',
+      currency: currency.toLowerCase(),
       product_data: {
         name: item.name,
         description: item.description,
         images: item.imageUrl ? [item.imageUrl] : [],
         metadata: { productId: item.productId || '' },
       },
-      unit_amount: Math.round(item.unitPrice * 100), // AED to fils
+      unit_amount: Math.round(item.unitPrice * 100),
     },
     quantity: item.quantity,
   }))

@@ -33,7 +33,7 @@ const nextConfig: NextConfig = {
   async headers() {
     const csp = [{ key: "Content-Security-Policy", value: storefrontCsp }, { key: "X-Content-Type-Options", value: "nosniff" }, { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" }];
     return [
-      ...["/pages/:path*", "/products/:path*", "/collections/:path*", "/cart"].map((source) => ({ source, headers: csp })),
+      ...["/pages/:path*", "/products/:path*", "/collections/:path*", "/collection", "/looks/:path*", "/atelier", "/journal", "/cart"].map((source) => ({ source, headers: csp })),
       // Editor previews may only be framed by the admin on the same origin.
       { source: "/design-preview/:path*", headers: [...csp, { key: "X-Frame-Options", value: "SAMEORIGIN" }, { key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/admin/:path*", headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self'" }, { key: "X-Frame-Options", value: "SAMEORIGIN" }, { key: "X-Content-Type-Options", value: "nosniff" }] },

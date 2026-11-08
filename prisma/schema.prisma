@@ -240,6 +240,7 @@ model Order {
   billingAddress  String   // JSON
   shippingAddress String   // JSON
   subtotal        Float    @default(0)
+  currency        String?
   discount        Float    @default(0)
   total           Float    @default(0)
   paymentMethod   String   @default("cod") // tabby | tamara | network | cod
@@ -263,6 +264,7 @@ model OrderItem {
   productName String
   sku         String?
   unitPrice   Float
+  size        String?
   qty         Int
   subtotal    Float
 
@@ -302,6 +304,10 @@ model Look {
   name      String
   imageUrl  String
   items     String   @default("[]")
+  description String?
+  modelName   String?
+  audience    String?
+  collection  String?
   isActive  Boolean  @default(true)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())

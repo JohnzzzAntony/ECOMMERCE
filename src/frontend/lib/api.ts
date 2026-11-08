@@ -4,6 +4,7 @@ import type {
   Testimonial, ClientLogo, HeroSlide, GalleryItem, Order, Enquiry, User,
 } from '@/shared/types'
 import type { StorefrontTheme } from '@/shared/theme'
+import type { SalonLook } from '@/shared/ombrine'
 import type { PublicLook } from '@/shared/looks'
 
 export interface PublicPage {
@@ -78,6 +79,9 @@ export const api = {
   blogPost: (slug: string) =>
     fetchJson<{ post: BlogPost; related: BlogPost[] }>(`/api/blog/${slug}`),
   testimonials: () => sharedGet<Testimonial[]>('/api/testimonials'),
+  salonLooks: (previewBrand?: string) => fetchJson<SalonLook[]>(previewBrand ? `/api/ombrine?previewBrand=${encodeURIComponent(previewBrand)}` : '/api/ombrine'),
+  stockNotification: (data: { productId: string; email: string; size?: string }) =>
+    fetchJson('/api/ombrine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
   looks: () => sharedGet<PublicLook[]>('/api/looks'),
   clients: () => sharedGet<ClientLogo[]>('/api/clients'),
   slider: () => sharedGet<HeroSlide[]>('/api/slider'),
@@ -112,7 +116,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   /** Creates an unpaid order priced on the server and returns Stripe's payment page URL. */
-  checkout: (data: { items: { productId: string; qty: number }[]; customerName: string; email: string; phone?: string; notes?: string; returnPath?: string }) =>
+  checkout: (data: { items: { productId: string; qty: number; size?: string }[]; customerName: string; email: string; phone?: string; notes?: string; returnPath?: string }) =>
     fetchJson<{ url: string; orderNumber: string }>('/api/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

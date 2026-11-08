@@ -14,6 +14,20 @@ bun run dev                # http://localhost:3000   (admin: /admin)
 
 Other scripts: `bun run typecheck`, `bun run lint`, `bun test tests`, `bun run build`, `bun run start`.
 
+### Ombrine storefront
+Point `DATABASE_URL` at the local or staging PostgreSQL database before applying migrations and installing the starter catalog.
+
+```bash
+bun run db:generate
+bun run db:deploy
+bun run ombrine:install --activate
+bun run dev
+```
+
+The installer enables the theme editor for the legacy storefront and adds eight sample looks, twelve products, a brand, three editorial pages, and the theme while preserving catalog edits and saved theme values. Rerunning it also refreshes unedited rows from the original Ombrine starter catalog. Drop `--activate` to install first and publish from **Admin → Themes**. An explicitly selected remote database requires `--allow-remote`.
+
+Manage colors, copy, currency, the collection season, gallery motion, and navigation in **Themes**. Use **Looks and models** for the photos, model credits, order, audience filters, and pinned pieces. Use **Categories** for collection filters. Assign products to a brand listed in the theme's **Catalog brand slug** setting. Edit sizes in the product's **Available sizes** field and editorial copy in **Pages**. Stock notification requests appear in **Enquiries**.
+
 ### Admin accounts
 
 ```bash
