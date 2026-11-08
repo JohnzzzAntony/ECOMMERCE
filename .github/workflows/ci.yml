@@ -23,23 +23,34 @@ jobs:
 
   database:
     name: Row level security + worker (PostgreSQL)
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: nexecoms_test }
+        ports: ['54329:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bunx prisma generate
-      - name: Start throwaway PostgreSQL and migrate
-        run: |
-          bun scripts/test-db.ts start > test-db.log 2>&1 &
-          for i in $(seq 1 60); do grep -q TEST_DATABASE_URL test-db.log && break; sleep 2; done
-          cat test-db.log
+      - name: Migrate the test database
+        run: bun scripts/test-db.ts provision
       - run: bun test tests/rls.db.test.ts
         env:
           TEST_DATABASE_URL: postgresql://app:app@127.0.0.1:54329/nexecoms_test
 
   e2e:
     name: E2E, accessibility and visual diff (Playwright)
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: nexecoms_test }
+        ports: ['54329:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
     runs-on: ubuntu-latest
     needs: check
     steps:
@@ -48,10 +59,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx prisma generate
       - run: bunx playwright install --with-deps chromium
-      - name: Start throwaway PostgreSQL and migrate
-        run: |
-          bun scripts/test-db.ts start > test-db.log 2>&1 &
-          for i in $(seq 1 60); do grep -q TEST_DATABASE_URL test-db.log && break; sleep 2; done
+      - name: Migrate the test database
+        run: bun scripts/test-db.ts provision
       - run: bunx playwright test
         env:
           TEST_DATABASE_URL: postgresql://app:app@127.0.0.1:54329/nexecoms_test
@@ -62,6 +71,13 @@ jobs:
 
   lighthouse:
     name: Performance budget (Lighthouse CI)
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: nexecoms_test }
+        ports: ['54329:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
     runs-on: ubuntu-latest
     needs: check
     steps:
@@ -69,11 +85,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bunx prisma generate
-      - name: Start throwaway PostgreSQL, migrate, seed the demo store
-        run: |
-          bun scripts/test-db.ts start > test-db.log 2>&1 &
-          for i in $(seq 1 60); do grep -q TEST_DATABASE_URL test-db.log && break; sleep 2; done
-          DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54329/nexecoms_test SEED_DESIGN_DEMO=1 bun prisma/seed-design.ts
+      - name: Migrate the test database
+        run: bun scripts/test-db.ts provision
       - name: Build and start
         run: |
           bun run build
