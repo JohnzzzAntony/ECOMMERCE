@@ -25,7 +25,7 @@ const looks: CrudConfig<Look> = {
     { key: 'audience', label: 'Look filter', type: 'select', emptyLabel: 'Uncategorised', options: () => LOOK_AUDIENCES.map((value) => ({ value, label: value === 'women' ? 'Women' : 'Men' })) },
     { key: 'collection', label: 'Salon collection', type: 'text', placeholder: 'e.g. Evening', hint: 'Looks with the same collection name share a row in the salon. Collections follow the display order of their first look.' },
     { key: 'sortOrder', label: 'Display order', type: 'number', min: 0, hint: 'Lower numbers show first.' },
-    { key: 'imageUrl', label: 'Model photo', type: 'image', folder: 'looks', required: true, hint: 'A full-body photo on a transparent or plain background works best (portrait, about 9:16).' },
+    { key: 'imageUrl', label: 'Model photo', type: 'image', folder: 'looks', required: true, hint: 'Upload a full-body photo: the background is removed and the figure cropped automatically (allow up to a minute). Pasted URLs are used as they are.' },
     {
       key: 'items', label: 'Products in this look', type: 'custom',
       render: (value, onChange, form) => <LookPiecesEditor value={value} onChange={onChange} imageUrl={String(form.imageUrl || '')} />,

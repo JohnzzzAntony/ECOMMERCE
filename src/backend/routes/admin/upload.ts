@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { failure, HttpError, requireAdmin } from '@/backend/lib/auth'
-import { uploadToCloudinary } from '@/backend/integrations/cloudinary'
+import { lookCutoutUrl, uploadToCloudinary, waitForCutout } from '@/backend/integrations/cloudinary'
 
-const FOLDERS = ['products', 'blog', 'gallery', 'slides', 'testimonials', 'clients', 'categories', 'brands', 'themes', 'pages']
+const FOLDERS = ['products', 'blog', 'gallery', 'slides', 'testimonials', 'clients', 'categories', 'brands', 'themes', 'pages', 'looks']
 const TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml']
 const MAX_BYTES = 10 * 1024 * 1024
 
@@ -18,7 +18,10 @@ export async function POST(request: Request) {
     if (!FOLDERS.includes(folder)) throw new HttpError(400, 'Invalid upload folder')
 
     const result = await uploadToCloudinary(Buffer.from(await file.arrayBuffer()), folder)
-    return NextResponse.json({ ok: true, url: result.url, publicId: result.publicId })
+    // Try the Look model photos are stored as their cut-out so every page shows the figure without its background.
+    const url = folder === 'looks' ? lookCutoutUrl(result.url) : result.url
+    if (url !== result.url) await waitForCutout(url)
+    return NextResponse.json({ ok: true, url, publicId: result.publicId })
   } catch (error) {
     if (error instanceof HttpError) return failure(error)
     console.error('Cloudinary upload error:', error)

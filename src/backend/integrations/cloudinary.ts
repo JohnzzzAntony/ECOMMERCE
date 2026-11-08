@@ -57,6 +57,21 @@ export async function uploadToCloudinary(
   return { url: result.secure_url, publicId: result.public_id }
 }
 
+/** Delivery URL of a model photo cut out like the salon figures: background removed, cropped to the figure, transparent WebP. */
+export function lookCutoutUrl(url: string) {
+  return url.replace('/image/upload/', '/image/upload/e_background_removal/e_trim/c_limit,h_1600,f_webp,q_auto/')
+}
+
+/** Cloudinary answers 423 while it removes a background; wait (up to ~60s) so the first view gets the finished cut-out. */
+export async function waitForCutout(url: string) {
+  for (let i = 0; i < 20; i++) {
+    const res = await fetch(url, { method: 'HEAD' }).catch(() => null)
+    if (res?.status !== 423) return res?.ok ?? false
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+  }
+  return false
+}
+
 /**
  * Upload a theme asset (image, font, video, document) and return its public URL.
  * Non-image files are stored as `raw` with their extension so browsers get the right type.
