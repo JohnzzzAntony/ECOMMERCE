@@ -1,10 +1,11 @@
 import Stripe from 'stripe'
 
+// Must not throw at import: `next build` loads every route module without runtime secrets.
 if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is not set')
+  console.warn('[Stripe] STRIPE_SECRET_KEY not set — card checkout will fail')
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_missing_key', {
   typescript: true,
 })
 

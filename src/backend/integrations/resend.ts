@@ -4,7 +4,7 @@ if (!process.env.RESEND_API_KEY) {
   console.warn('[Resend] RESEND_API_KEY not set — emails will be skipped')
 }
 
-export const resend = new Resend(process.env.RESEND_API_KEY)
+export const resend = new Resend(process.env.RESEND_API_KEY || 're_missing_key')
 
 const FROM = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'johns.antony@hotmail.com'
