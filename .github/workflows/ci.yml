@@ -87,13 +87,21 @@ jobs:
       - run: bunx prisma generate
       - name: Migrate the test database
         run: bun scripts/test-db.ts provision
+      # Audit the storefront production serves (the Ombrine theme); without it /cart has nothing to render.
+      - name: Install the Ombrine storefront
+        run: bun scripts/install-ombrine.ts --activate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54329/nexecoms_test
       - name: Build and start
         run: |
           bun run build
           PORT=3100 HOSTNAME=0.0.0.0 bun .next/standalone/server.js > server.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://demo.localhost:3100/robots.txt && break; sleep 2; done
+          curl -sf -o /dev/null http://demo.localhost:3100/cart || { cat server.log; exit 1; }
         env:
           DATABASE_URL: postgresql://app:app@127.0.0.1:54329/nexecoms_test
+          # The Stripe module refuses to load without a key; nothing is charged in this job.
+          STRIPE_SECRET_KEY: sk_test_ci_placeholder
       - run: npx --yes @lhci/cli@0.14.x autorun
       - uses: actions/upload-artifact@v4
         if: always()

@@ -4,7 +4,10 @@ if (!process.env.RESEND_API_KEY) {
   console.warn('[Resend] RESEND_API_KEY not set — emails will be skipped')
 }
 
-export const resend = new Resend(process.env.RESEND_API_KEY)
+// Created on first send, not at import: the constructor throws without a key, which failed `next build` (CI has
+// no key). Each send below catches that error and logs it.
+let client: Resend | undefined
+export const resend = { get emails() { return (client ??= new Resend(process.env.RESEND_API_KEY)).emails } }
 
 const FROM = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'johns.antony@hotmail.com'
