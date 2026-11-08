@@ -1,6 +1,9 @@
 // Throwaway local PostgreSQL for database tests (RLS, E2E): never touches DATABASE_URL from .env.
 //   bun scripts/test-db.ts start     → initialises .test-db/, applies migrations, prints TEST_DATABASE_URL, keeps
 //                                      running until Ctrl+C (the database stops with this process)
+//   bun scripts/test-db.ts provision      → for an already running PostgreSQL (CI service container) at
+//                                      127.0.0.1:TEST_DB_PORT with the postgres/postgres superuser and an empty
+//                                      nexecoms_test database: applies migrations and creates the "app" role
 //   bun scripts/test-db.ts stop --clean   → removes the data directory
 // Migrations run as the superuser (table owner); tests connect as "app", a role without SUPERUSER/BYPASSRLS, so
 // row level security is enforced exactly as in production.
@@ -14,19 +17,30 @@ const pg = new EmbeddedPostgres({ databaseDir: DIR, user: 'postgres', password: 
 const admin = `postgresql://postgres:postgres@127.0.0.1:${PORT}/nexecoms_test`
 export const appUrl = `postgresql://app:app@127.0.0.1:${PORT}/nexecoms_test`
 
+async function migrateAndCreateRole(client: ReturnType<typeof pg.getPgClient>) {
+  execSync('bunx prisma migrate deploy', { env: { ...process.env, DATABASE_URL: admin }, stdio: 'inherit' })
+  await client.connect()
+  await client.query(`CREATE ROLE app LOGIN PASSWORD 'app' NOSUPERUSER NOBYPASSRLS;
+    GRANT USAGE ON SCHEMA public TO app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app;`)
+  await client.end()
+}
+
+// CI: the runner provides PostgreSQL as a service container (the embedded binaries need system libraries
+// that newer runner images do not ship), so only migrate and create the role.
+async function provision() {
+  await migrateAndCreateRole(pg.getPgClient('nexecoms_test'))
+  console.log(`TEST_DATABASE_URL=${appUrl}`)
+  console.log(`TEST_DATABASE_ADMIN_URL=${admin}`)
+}
+
 async function start() {
   const fresh = !existsSync(DIR)
   if (fresh) await pg.initialise()
   await pg.start()
   if (fresh) {
     await pg.createDatabase('nexecoms_test')
-    execSync('bunx prisma migrate deploy', { env: { ...process.env, DATABASE_URL: admin }, stdio: 'inherit' })
-    const client = pg.getPgClient('nexecoms_test')
-    await client.connect()
-    await client.query(`CREATE ROLE app LOGIN PASSWORD 'app' NOSUPERUSER NOBYPASSRLS;
-      GRANT USAGE ON SCHEMA public TO app;
-      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app;`)
-    await client.end()
+    await migrateAndCreateRole(pg.getPgClient('nexecoms_test'))
   }
   console.log(`TEST_DATABASE_URL=${appUrl}`)
   console.log(`TEST_DATABASE_ADMIN_URL=${admin}`)
@@ -43,6 +57,7 @@ async function stop() {
 if (import.meta.main) {
   const cmd = process.argv[2]
   if (cmd === 'start') await start()
+  else if (cmd === 'provision') await provision()
   else if (cmd === 'stop') await stop()
-  else { console.error('usage: bun scripts/test-db.ts start|stop [--clean]'); process.exit(1) }
+  else { console.error('usage: bun scripts/test-db.ts start|provision|stop [--clean]'); process.exit(1) }
 }
