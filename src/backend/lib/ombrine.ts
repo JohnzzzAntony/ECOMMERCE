@@ -15,19 +15,22 @@ export function salonCatalog(theme: StorefrontTheme): Prisma.ProductWhereInput {
 const productInclude = { images: { orderBy: { sortOrder: 'asc' } }, brand: true, category: true } satisfies Prisma.ProductInclude
 const serialize = (row: Prisma.ProductGetPayload<{ include: typeof productInclude }>): Product => ({ ...row, createdAt: row.createdAt.toISOString() })
 
+// Every active look shows, with exactly the products the admin placed in it (any brand).
 export function salonLooks(theme: StorefrontTheme): Promise<SalonLook[]> {
-  return memo(`ombrine:looks:${salonBrand(theme)}`, async () => {
+  return memo('ombrine:looks', async () => {
     const rows = await db.look.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], take: 96 })
     const looks = rows.map(({ id, name, description, modelName, audience, collection, imageUrl, items }) => ({ id, name, description, modelName, audience, collection, imageUrl, pieces: readLookPieces(items) }))
     const ids = [...new Set(looks.flatMap(({ pieces }) => pieces.map(({ productId }) => productId)))]
-    if (!ids.length) return []
-    const products = await db.product.findMany({ where: { id: { in: ids }, ...salonCatalog(theme) }, include: productInclude })
+    const products = ids.length ? await db.product.findMany({ where: { id: { in: ids } }, include: productInclude }) : []
     const byId = new Map(products.map((row) => [row.id, serialize(row)]))
-    return looks.flatMap((look) => {
-      const products = look.pieces.flatMap(({ productId }) => byId.get(productId) ?? [])
-      return products.length ? [{ ...look, products }] : []
-    })
+    return looks.map(({ pieces, ...look }) => ({ ...look, pieces, products: pieces.flatMap(({ productId }) => byId.get(productId) ?? []) }))
   })
+}
+
+/** Products the salon sells: its catalog brands plus anything placed in an active look. */
+export async function salonShoppable(theme: StorefrontTheme): Promise<Prisma.ProductWhereInput> {
+  const ids = (await salonLooks(theme)).flatMap((look) => look.products.map((product) => product.id))
+  return { OR: [salonCatalog(theme), { id: { in: ids } }] }
 }
 
 export function salonCategories(theme: StorefrontTheme) {
@@ -38,7 +41,7 @@ export function salonCategories(theme: StorefrontTheme) {
 }
 
 export async function salonProduct(theme: StorefrontTheme, slug: string) {
-  const product = await db.product.findFirst({ where: { slug, ...salonCatalog(theme) }, include: productInclude })
+  const product = await db.product.findFirst({ where: { slug, ...(await salonShoppable(theme)) }, include: productInclude })
   return product ? serialize(product) : null
 }
 

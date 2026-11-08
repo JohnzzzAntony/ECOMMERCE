@@ -271,7 +271,7 @@ function LookDetail({ looks, index, theme, standalone, portraitRef, onClose, onS
       </nav>}
     </div>
     <figure className="om-look-model"><img ref={portraitRef} src={look.imageUrl} alt={look.modelName ? `${look.modelName} wearing ${look.name}` : look.name} /></figure>
-    <section className="om-pieces" aria-label="Shop the look" tabIndex={0} data-lenis-prevent>
+    {product && <section className="om-pieces" aria-label="Shop the look" tabIndex={0} data-lenis-prevent>
       <div className="om-panel-heading"><h2>{look.products.length === 1 ? 'One piece' : look.products.length === 3 ? 'Three pieces' : `${look.products.length} pieces`}</h2>
         {standalone ? <Link href="/">Close ×</Link> : <button type="button" onClick={onClose}>Close ×</button>}</div>
       <Link className="om-piece-hero om-product-image" href={`/products/${product.slug}`}>{product.images[0] && <img src={product.images[0].imageUrl} alt={product.name} />}</Link>
@@ -291,7 +291,7 @@ function LookDetail({ looks, index, theme, standalone, portraitRef, onClose, onS
         Add the full look <span>{price(look.products.reduce((sum, piece) => sum + effectivePrice(piece), 0))}</span>
       </button>}
       <p className="om-muted">{String(theme.settings.ombrine_delivery ?? '')}</p>
-    </section>
+    </section>}
     {guide && <SizeGuide theme={theme} onClose={() => setGuide(false)} />}
   </section>
 }

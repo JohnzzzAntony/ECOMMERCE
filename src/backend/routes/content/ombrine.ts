@@ -6,7 +6,7 @@ import { checkOrigin, failure, requireAdmin } from '@/backend/lib/auth'
 import { rateLimit } from '@/backend/lib/rate-limit'
 import { clientIp } from '@/backend/lib/tenancy'
 import { storefrontTheme } from '@/backend/lib/theme-store'
-import { salonCatalog, salonLooks } from '@/backend/lib/ombrine'
+import { salonLooks, salonShoppable } from '@/backend/lib/ombrine'
 import { isOmbrine, productSizes } from '@/shared/ombrine'
 
 export async function GET(request: NextRequest) {
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const theme = await storefrontTheme()
     if (!isOmbrine(theme)) return NextResponse.json({ error: 'Not found.' }, { status: 404 })
     const { productId, email, size } = parsed.data
-    const product = await db.product.findFirst({ where: { id: productId, ...salonCatalog(theme) } })
+    const product = await db.product.findFirst({ where: { id: productId, ...(await salonShoppable(theme)) } })
     if (!product) return NextResponse.json({ error: 'This piece is no longer available.' }, { status: 404 })
     if (product.inStock) return NextResponse.json({ error: 'This piece is available now. Refresh to shop it.' }, { status: 409 })
     if (size && !productSizes(product).includes(size)) return NextResponse.json({ error: 'Choose an available size.' }, { status: 400 })

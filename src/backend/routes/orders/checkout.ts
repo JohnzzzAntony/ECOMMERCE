@@ -8,7 +8,7 @@ import { rateLimit } from '@/backend/lib/rate-limit'
 import { clientIp } from '@/backend/lib/tenancy'
 import { createCheckoutSession, stripe } from '@/backend/integrations/stripe'
 import { storefrontTheme } from '@/backend/lib/theme-store'
-import { salonCatalog } from '@/backend/lib/ombrine'
+import { salonShoppable } from '@/backend/lib/ombrine'
 import { isOmbrine, productSizes, salonCurrency } from '@/shared/ombrine'
 import { effectivePrice } from '@/shared/storefront'
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const currency = ombrine ? salonCurrency(theme) : process.env.CURRENCY || 'AED'
     const ids = [...new Set(body.items.map(({ productId }) => productId))]
     const products = await db.product.findMany({
-      where: { id: { in: ids }, ...(ombrine ? salonCatalog(theme) : {}) },
+      where: { id: { in: ids }, ...(ombrine ? await salonShoppable(theme) : {}) },
       include: { images: { take: 1, orderBy: { sortOrder: 'asc' } } },
     })
     if (products.length !== ids.length) throw new HttpError(409, 'A product in your order is no longer available.')

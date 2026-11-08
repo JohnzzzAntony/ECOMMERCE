@@ -32,7 +32,7 @@ export default async function Looks({ searchParams }: { searchParams: Promise<{ 
             <div className="om-product-image"><img src={look.imageUrl} alt="" loading={index < 4 ? 'eager' : 'lazy'} /></div>
             <div className="om-look-card-title"><h2>{look.name}</h2><span>L{String(index + 1).padStart(2, '0')}</span></div>
             {look.description && <p className="om-muted">{look.description}</p>}
-            <p>{salonPrice(look.products.reduce((sum, piece) => sum + effectivePrice(piece), 0), salonCurrency(theme))} · {look.products.length} {look.products.length === 1 ? 'piece' : 'pieces'}</p>
+            {!!look.products.length && <p>{salonPrice(look.products.reduce((sum, piece) => sum + effectivePrice(piece), 0), salonCurrency(theme))} · {look.products.length} {look.products.length === 1 ? 'piece' : 'pieces'}</p>}
           </Link>
         </article>)}</div>
         <div className="om-look-index-footer"><h2>Prefer to shop piece by piece?</h2><Link className="om-link" href="/collection">See the collection →</Link></div>
