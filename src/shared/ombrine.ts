@@ -13,7 +13,7 @@ export const OMBRINE_SCHEMA: ThemeSettingDef[] = [
   { id: 'ombrine_enabled', type: 'checkbox', group: 'Ombrine salon', label: 'Use the Ombrine storefront', default: true },
   { id: 'ombrine_season', type: 'text', group: 'Ombrine salon', label: 'Collection season', default: 'Autumn–Winter 2026' },
   { id: 'ombrine_brand', type: 'text', group: 'Ombrine salon', label: 'Catalog brand slug', default: 'ombrine', help: 'Enter comma-separated brand slugs to show those products in the storefront and search.' },
-  { id: 'ombrine_currency', type: 'select', group: 'Ombrine salon', label: 'Catalog currency', default: 'EUR', options: ['EUR', 'AED', 'USD', 'GBP'].map((value) => ({ value, label: value })) },
+  { id: 'ombrine_currency', type: 'select', group: 'Ombrine salon', label: 'Catalog currency', default: 'AED', options: ['AED', 'EUR', 'USD', 'GBP'].map((value) => ({ value, label: value })) },
   { id: 'ombrine_night', type: 'color', group: 'Ombrine salon', label: 'Dark canvas', default: '#100E0C', var: '--om-night' },
   { id: 'ombrine_ivory', type: 'color', group: 'Ombrine salon', label: 'Dark appearance text', default: '#EEE7DC', var: '--om-ivory' },
   { id: 'ombrine_mid_height', type: 'range', group: 'Ombrine depth', label: 'Main figure height', default: 340, min: 180, max: 500, step: 10, unit: 'px', var: '--om-mid-height' },
@@ -40,7 +40,7 @@ export function salonBrand(theme: StorefrontTheme) {
 }
 
 export function salonCurrency(theme: StorefrontTheme) {
-  return String(theme.settings.ombrine_currency || 'EUR')
+  return String(theme.settings.ombrine_currency || 'AED')
 }
 
 export function salonPrice(value: number, currency: string) {

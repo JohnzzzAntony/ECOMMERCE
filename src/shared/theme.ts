@@ -243,13 +243,7 @@ export interface ThemeReport {
 // ---------- default theme ----------
 
 const FONT_OPTIONS = [
-  { value: 'var(--font-dmsans), system-ui, sans-serif', label: 'DM Sans' },
-  { value: 'var(--font-newsreader), Georgia, serif', label: 'Newsreader (serif)' },
-  { value: 'var(--font-inter), system-ui, sans-serif', label: 'Inter' },
-  { value: 'var(--font-jakarta), system-ui, sans-serif', label: 'Plus Jakarta Sans' },
-  { value: 'var(--font-cairo), system-ui, sans-serif', label: 'Cairo' },
-  { value: 'system-ui, -apple-system, "Segoe UI", sans-serif', label: 'System UI' },
-  { value: 'Georgia, "Times New Roman", serif', label: 'Serif (Georgia)' },
+  { value: 'var(--font-manrope), system-ui, sans-serif', label: 'Manrope' },
 ]
 
 /** Settings every theme gets; a package's own schema is appended (same id overrides). */
@@ -264,7 +258,7 @@ export const CORE_SETTINGS: ThemeSettingDef[] = [
   { id: 'color_tint', type: 'color', group: 'Colors', label: 'Tint', default: '#FFEBEA', var: ['--accent'] },
   { id: 'color_border', type: 'color', group: 'Colors', label: 'Borders', default: '#E4E1D8', var: ['--border', '--input'] },
   { id: 'font_body', type: 'select', group: 'Typography', label: 'Body font', default: FONT_OPTIONS[0].value, options: FONT_OPTIONS, var: '--theme-font-body' },
-  { id: 'font_heading', type: 'select', group: 'Typography', label: 'Heading font', default: FONT_OPTIONS[1].value, options: FONT_OPTIONS, var: '--theme-font-heading' },
+  { id: 'font_heading', type: 'select', group: 'Typography', label: 'Heading font', default: FONT_OPTIONS[0].value, options: FONT_OPTIONS, var: '--theme-font-heading' },
   { id: 'heading_weight', type: 'range', group: 'Typography', label: 'Heading weight', default: 500, min: 300, max: 800, step: 100, var: '--theme-heading-weight' },
   { id: 'radius', type: 'range', group: 'Typography', label: 'Corner radius', default: 0, min: 0, max: 24, step: 1, unit: 'px', var: '--radius' },
   { id: 'logo_url', type: 'image', group: 'Branding', label: 'Logo image', default: '', help: 'Replaces the text logo when set.' },

@@ -1,36 +1,19 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans, Cairo, DM_Sans, Newsreader } from "next/font/google";
+import { Manrope, Cairo } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/frontend/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/frontend/components/ui/sonner";
 
-const inter = Inter({
-  variable: "--font-inter",
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
   display: "swap",
 });
 
-const jakarta = Plus_Jakarta_Sans({
-  variable: "--font-jakarta",
-  subsets: ["latin"],
-  display: "swap",
-});
-
+// Manrope has no Arabic glyphs, so right-to-left pages keep Cairo.
 const cairo = Cairo({
   variable: "--font-cairo",
   subsets: ["arabic", "latin"],
-  display: "swap",
-});
-
-const dmSans = DM_Sans({
-  variable: "--font-dmsans",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const newsreader = Newsreader({
-  variable: "--font-newsreader",
-  subsets: ["latin"],
   display: "swap",
 });
 
@@ -65,7 +48,7 @@ export default function RootLayout({
 }>) {
   // Font variables sit on <html> so the theme's :root variables (e.g. --theme-font-heading) can reference them.
   return (
-    <html lang="en" className={`${inter.variable} ${jakarta.variable} ${cairo.variable} ${dmSans.variable} ${newsreader.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${manrope.variable} ${cairo.variable}`} suppressHydrationWarning>
       <head>
         {/* A template script navigated its isolated frame (name "theme-frame") to a store URL: hand the
             URL to the real page and render nothing here. Runs before the app bundle. */}

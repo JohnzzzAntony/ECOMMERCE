@@ -7,7 +7,7 @@ import { effectivePrice } from '@/shared/storefront'
 import { loadOmbrineTheme, OmbrineIndexHeading } from '../_storefront/ombrine-route'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'The looks | Ombrine' }
+export const metadata = { title: 'The looks | NexEcoms' }
 
 export default async function Looks({ searchParams }: { searchParams: Promise<{ audience?: string }> }) {
   const [theme, { audience }] = await Promise.all([loadOmbrineTheme(), searchParams])

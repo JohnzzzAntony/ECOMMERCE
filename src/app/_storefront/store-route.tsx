@@ -33,7 +33,7 @@ function pathOf(page: RenderedPage) {
 export async function storeMetadata(route: StoreRoute): Promise<Metadata | null> {
   const theme = await loadOmbrineTheme()
   if (theme) {
-    const name = String(theme.settings.logo_text || 'Ombrine')
+    const name = String(theme.settings.logo_text || 'NexEcoms')
     if (route.kind === 'page' && !route.slug) {
       const title = `${name} — The fashion salon`
       const description = 'Explore the looks and shop the pieces.'

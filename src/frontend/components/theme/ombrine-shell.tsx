@@ -72,7 +72,8 @@ export function OmbrineShell({ theme, children, footer = true }: { theme: Storef
   const bag = useStore((s) => s.cartDrawerOpen)
   const setBag = useStore((s) => s.setCartDrawerOpen)
   const count = mounted ? cart.reduce((sum, line) => sum + line.quantity, 0) : 0
-  const logo = String(theme.settings.logo_text || 'Ombrine')
+  const logo = String(theme.settings.logo_text || 'NexEcoms')
+  const mark = theme.settings.logo_url ? <img src={String(theme.settings.logo_url)} alt={logo} /> : logo
   const clientCare = theme.menus.footer.find((item) => item.id === 'delivery')
   const { root: motionRoot, curtain, navigate } = useOmbrineMotion(footer)
   useEffect(() => {
@@ -116,7 +117,7 @@ export function OmbrineShell({ theme, children, footer = true }: { theme: Storef
           </div>}
         </div>
         {footer && <nav className="om-editorial-nav" aria-label="Store">{theme.menus.main.map((item) => <SalonLink key={item.id} item={item} />)}</nav>}
-        <Link href="/" className="om-logo" aria-label={`${logo} home`}>{theme.settings.logo_url ? <img src={String(theme.settings.logo_url)} alt={logo} /> : logo}</Link>
+        <Link href="/" className="om-logo" aria-label={`${logo} home`}>{mark}</Link>
         <div className="om-header-tools">
           {footer && <div className="om-editorial-tools">
             <SalonSearch />
@@ -128,8 +129,8 @@ export function OmbrineShell({ theme, children, footer = true }: { theme: Storef
         </div>
       </header>
       <main id="om-main">{children}</main>
-      {footer && <footer className="om-footer"><Link href="/" className="om-wordmark">{logo}</Link><nav aria-label="Footer">{theme.menus.footer.map((item) => <SalonLink key={item.id} item={item} />)}</nav></footer>}
-      <div className="om-curtain" ref={curtain} aria-hidden="true"><span>{logo}</span></div>
+      {footer && <footer className="om-footer"><Link href="/" className="om-wordmark">{mark}</Link><nav aria-label="Footer">{theme.menus.footer.map((item) => <SalonLink key={item.id} item={item} />)}</nav></footer>}
+      <div className="om-curtain" ref={curtain} aria-hidden="true" />
       {mounted && bag && <SalonDialog label="Your bag" kind="bag" onClose={() => setBag(false)}>
         <BagContents theme={theme} onClose={() => setBag(false)} />
       </SalonDialog>}

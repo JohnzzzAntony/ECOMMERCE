@@ -73,7 +73,7 @@ try {
       where: { slug: 'ombrine' }, update: { settingsSchema: JSON.stringify(OMBRINE_SCHEMA) },
       create: { slug: 'ombrine', name: 'Ombrine', kind: 'native', description: 'A warm editorial fashion salon with a shoppable spatial gallery.',
         settingsSchema: JSON.stringify(OMBRINE_SCHEMA),
-        settings: JSON.stringify({ logo_text: 'Ombrine', logo_tagline: '', color_background: '#ECE8E2', color_text: '#16130F', color_surface: '#F5F2ED', color_primary: '#16130F', color_primary_dark: '#100E0C', color_accent: '#6C6359', color_border: '#CCC4B8', show_announcement: false }),
+        settings: JSON.stringify({ logo_text: 'NexEcoms', logo_tagline: '', color_background: '#ECE8E2', color_text: '#16130F', color_surface: '#F5F2ED', color_primary: '#16130F', color_primary_dark: '#100E0C', color_accent: '#6C6359', color_border: '#CCC4B8', show_announcement: false }),
       },
     })
     // Native theme administration is explicitly enabled for the existing legacy storefront.
@@ -81,7 +81,7 @@ try {
       where: { id: 'legacy', OR: [{ themesEnabled: false }, { themesEnabled: null }] },
       data: { themesEnabled: true },
     })
-    const brand = await tx.brand.upsert({ where: { slug: 'ombrine' }, update: {}, create: { slug: 'ombrine', name: 'Ombrine', description: 'The first salon collection.' } })
+    const brand = await tx.brand.upsert({ where: { slug: 'ombrine' }, update: {}, create: { slug: 'ombrine', name: 'NexEcoms', description: 'The first salon collection.' } })
     await tx.productField.upsert({ where: { slug: 'ombrine-sizes' }, update: {}, create: { slug: 'ombrine-sizes', label: 'Available sizes (comma-separated)', showOnStorefront: false } })
     const ids = new Map<string, string>()
     for (const [key, name, regularPrice, sizes, shortDescription] of products) {
